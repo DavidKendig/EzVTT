@@ -1,0 +1,35 @@
+{% extends "base.html" %}
+{% block titleblock %} &mdash; Admin{% endblock %}
+
+{% block content %}
+{% if role == 'gm' %}
+<h2>GM Admin</h2>
+<p class="text-muted">Game-master control panel (demo placeholder). Real controls are
+   gated by the Java gateway, which enforces the GM role server-side.</p>
+
+<div class="row">
+  <div class="col-md-6 mb-3">
+    <div class="card h-100 shadow-sm">
+      <div class="card-body">
+        <h5 class="card-title">Play Space</h5>
+        <p>Move tokens and manage the shared map all players see.</p>
+        <a class="btn btn-primary" href="/play?role=gm">Open Play Space</a>
+      </div>
+    </div>
+  </div>
+  <div class="col-md-6 mb-3">
+    <div class="card h-100 shadow-sm">
+      <div class="card-body">
+        <h5 class="card-title">Wiki</h5>
+        <p>Edit campaign lore, session notes, and house rules.</p>
+        <a class="btn btn-outline-primary" href="/wiki">Open Wiki</a>
+      </div>
+    </div>
+  </div>
+</div>
+{% else %}
+<div class="alert alert-danger">
+  <strong>Access denied.</strong> The admin space is for the Game Master only.
+</div>
+{% endif %}
+{% endblock %}

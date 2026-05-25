@@ -1,0 +1,78 @@
+{% extends "base.html" %}
+{% block titleblock %} &mdash; Home{% endblock %}
+
+{% block content %}
+<div class="hero p-5 mb-4 text-center">
+  <h1 class="display-4">Welcome to {{ game_name }}</h1>
+  <p class="lead mb-4">A self-hosted virtual tabletop. The Game Master runs the table;
+     players join from anywhere in their browser.</p>
+  {% if role == 'anonymous' %}
+  <a href="/login" class="btn btn-light btn-lg px-4 me-2">Log in</a>
+  <a href="/register" class="btn btn-outline-light btn-lg px-4">Create an account</a>
+  {% else %}
+  <a href="/play" class="btn btn-light btn-lg px-4 me-2">Enter the Play Space</a>
+  <a href="/wiki" class="btn btn-outline-light btn-lg px-4">Read the Wiki</a>
+  {% endif %}
+</div>
+
+<hr/>
+
+<div class="row">
+  <div class="col-12 col-md-4 mb-3">
+    <div class="card h-100 shadow-sm">
+      <div class="card-body text-center">
+        <h5 class="card-title">Players Online</h5>
+        <div class="stat-num" id="stat-online">&mdash;</div>
+        <p class="text-muted mb-0"><span id="stat-gm">0</span> GM &middot;
+           <span id="stat-players">0</span> player(s) in the play space</p>
+      </div>
+    </div>
+  </div>
+
+  <div class="col-12 col-md-4 mb-3">
+    <div class="card h-100 shadow-sm">
+      <div class="card-body">
+        <h5 class="card-title">Recently Connected</h5>
+        <ul class="list-unstyled mb-0">
+          {% for s in recent_sessions %}
+          <li>{{ s.name }} &mdash; <em class="text-muted">{{ s.when }}</em></li>
+          {% empty %}
+          <li class="text-muted">No recent sessions yet.</li>
+          {% endfor %}
+        </ul>
+      </div>
+    </div>
+  </div>
+
+  <div class="col-12 col-md-4 mb-3">
+    <div class="card h-100 shadow-sm">
+      <div class="card-body">
+        <h5 class="card-title">Campaign Stats</h5>
+        <ul class="list-unstyled mb-0">
+          <li>{{ num_players }} player{{ num_players|pluralize }}
+              (+ {{ num_characters }} character{{ num_characters|pluralize }})</li>
+          <li>1 shared map &middot; 1 token</li>
+          <li>{{ num_wiki_pages }} wiki page{{ num_wiki_pages|pluralize }}</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block body_ext %}
+<script>
+  // "Players Online" is live runtime state owned by the Java gateway, not Django.
+  async function refreshStats() {
+    try {
+      const r = await fetch("/stats", { cache: "no-store" });
+      const s = await r.json();
+      document.getElementById("stat-online").textContent  = s.online;
+      document.getElementById("stat-gm").textContent       = s.gm_online;
+      document.getElementById("stat-players").textContent  = s.players_online;
+    } catch (e) { /* gateway warming up */ }
+  }
+  refreshStats();
+  setInterval(refreshStats, 3000);
+</script>
+{% endblock %}

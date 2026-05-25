@@ -1,0 +1,56 @@
+{% extends "base.html" %}
+{% block titleblock %} &mdash; Wiki: {{ wiki_title }}{% endblock %}
+
+{% block head_ext %}
+<style>
+  .wiki-sidebar { max-height: 78vh; overflow-y: auto; font-size: .9rem; }
+  .wiki-tree ul { padding-left: 1rem; }
+  .wiki-tree summary { cursor: pointer; font-weight: 600; padding: .1rem 0; }
+  .wiki-tree .wiki-link { display: block; padding: .05rem .3rem; color: #334; text-decoration: none; border-radius: 4px; }
+  .wiki-tree .wiki-link:hover { background: #e9ecf3; }
+  .wiki-tree .wiki-link.active { background: #2b2d42; color: #fff; }
+  .wiki-content { max-width: 100%; }
+  .wiki-content img { max-width: 100%; height: auto; }
+  .wiki-content table { border-collapse: collapse; }
+  .wiki-content table td, .wiki-content table th { border: 1px solid #ccc; padding: .3rem .5rem; }
+  .wiki-content pre { background: #f1f3f6; padding: .8rem; border-radius: 6px; overflow-x: auto; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <h2 class="mb-0">Campaign Wiki</h2>
+  <div class="text-end">
+    <small class="text-muted d-block">source: <a href="https://github.com/{{ wiki_repo }}" target="_blank" rel="noopener">{{ wiki_repo }}</a></small>
+    <a class="btn btn-sm btn-outline-secondary mt-1" href="/wiki?refresh=1">&#8635; Refresh from GitHub</a>
+  </div>
+</div>
+
+{% if wiki_error %}
+<div class="alert alert-danger">{{ wiki_error }}</div>
+{% endif %}
+
+<div class="row">
+  <aside class="col-12 col-md-4 col-lg-3 mb-3">
+    <div class="card shadow-sm">
+      <div class="card-body wiki-sidebar">
+        {{ wiki_nav }}
+      </div>
+    </div>
+  </aside>
+
+  <section class="col-12 col-md-8 col-lg-9">
+    <div class="card shadow-sm">
+      <div class="card-body wiki-content">
+        {% if wiki_not_found %}
+          <div class="alert alert-warning">Page not found. Pick a page from the menu.</div>
+        {% elif wiki_html %}
+          {{ wiki_html }}
+        {% else %}
+          <p class="text-muted">Select a page from the menu to begin.</p>
+        {% endif %}
+      </div>
+    </div>
+  </section>
+</div>
+{% endblock %}
