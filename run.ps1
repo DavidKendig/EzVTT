@@ -12,6 +12,9 @@ if (-not $env:EzVTT_DJANGO_PORT) { $env:EzVTT_DJANGO_PORT = "8000" }
 $edgePort   = $env:EzVTT_EDGE_PORT
 $djangoPort = $env:EzVTT_DJANGO_PORT
 
+# Stop any stale EzVTT servers from a previous run before starting fresh.
+& (Join-Path $root "kill.ps1")
+
 if (-not (Test-Path $venv)) {
     Write-Host "Creating virtual environment..."
     python -m venv $venv
@@ -26,14 +29,17 @@ Write-Host "Compiling Java edge gateway..."
 javac -d $build (Join-Path $root "server\EzVTT.java")
 
 Write-Host "Starting Django UI app on 127.0.0.1:$djangoPort..."
+# Quote the manage.py path: it contains a space ("GITHUB Projects") that would
+# otherwise be split into separate arguments by Start-Process.
+$manage = Join-Path $root "client\manage.py"
 $django = Start-Process -FilePath $py `
-    -ArgumentList @((Join-Path $root "client\manage.py"), "runserver", "127.0.0.1:$djangoPort", "--noreload") `
+    -ArgumentList @("`"$manage`"", "runserver", "127.0.0.1:$djangoPort", "--noreload") `
     -PassThru -NoNewWindow
 
 try {
     Start-Sleep -Seconds 2
     Write-Host "Starting Java edge gateway on http://localhost:$edgePort ..."
-    Write-Host "Open http://localhost:$edgePort/play?role=gm  and  http://localhost:$edgePort/play"
+    Write-Host "Open http://localhost:$edgePort/  (use the GM/Player/Anon toggle in the navbar)"
     java -cp $build EzVTT
 } finally {
     if ($django -and -not $django.HasExited) {
