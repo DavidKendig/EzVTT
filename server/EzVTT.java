@@ -42,8 +42,12 @@ public class EzVTT {
         catch (NumberFormatException bad) { return fallback; }
     }
 
-    // Shared play-space state (demo: one token on a grid).
+    // Shared play-space state (demo: one token on a grid). All of this is the
+    // live state the hub broadcasts; the GM mutates it, players observe it.
     static volatile int tokenX = 5, tokenY = 5;
+    static volatile String mapUrl = "";        // active battlemap shown to all ("" = none)
+    static volatile int cols = 10, rows = 10;   // grid the GM fitted to the map
+    static volatile String tokenUrl = "";       // active token image ("" = default marker)
     static final Set<Client> clients = ConcurrentHashMap.newKeySet();
 
     // ---- Accounts & sessions (DEMO: in-memory, lost on restart) -------------
@@ -296,6 +300,8 @@ public class EzVTT {
         clients.add(client);
         System.out.println("WS connect: " + user + " (role=" + role + ", " + clients.size() + " online)");
         client.send("role " + role);
+        client.send("map " + cols + " " + rows + " " + mapMsg());
+        client.send("token " + tokenMsg());
         client.send("state " + tokenX + " " + tokenY);
 
         DataInputStream dis = new DataInputStream(in);
@@ -314,18 +320,107 @@ public class EzVTT {
     static void handleMessage(Client c, String msg) {
         if (msg.isEmpty()) return;
         String[] p = msg.split(" ");
-        if (p[0].equals("move") && p.length >= 3) {
-            // Authorization enforced at the server, never trusting the client UI.
-            if (!c.role.equals("gm")) {
-                c.send("denied only the GM may move tokens");
-                return;
-            }
-            try {
-                tokenX = Integer.parseInt(p[1]);
-                tokenY = Integer.parseInt(p[2]);
-            } catch (NumberFormatException bad) { return; }
-            broadcast("state " + tokenX + " " + tokenY);
+
+        // ---- Party chat: any logged-in user may talk; everyone sees it. ----
+        if (p[0].equals("chat")) {
+            if (c.role.equals("anonymous")) { c.send("denied please log in to chat"); return; }
+            String text = sanitizeChat(msg.length() > 5 ? msg.substring(5) : "");
+            if (!text.isEmpty()) broadcast("chat\t" + c.user + "\t" + text);
+            return;
         }
+        // ---- Dice rolls: rolled SERVER-side so everyone sees one result. ----
+        if (p[0].equals("roll")) {
+            if (c.role.equals("anonymous")) { c.send("denied please log in to roll"); return; }
+            if (p.length >= 2) rollDice(c, p[1]);
+            return;
+        }
+
+        // Authorization is enforced at the server for every mutation, never
+        // trusting the client UI.
+        if (p[0].equals("move") && p.length >= 3) {
+            if (!c.role.equals("gm")) { c.send("denied only the GM may move tokens"); return; }
+            int x, y;
+            try { x = Integer.parseInt(p[1]); y = Integer.parseInt(p[2]); }
+            catch (NumberFormatException bad) { return; }
+            if (x < 0 || y < 0 || x >= cols || y >= rows) return;   // stay on the board
+            tokenX = x; tokenY = y;
+            broadcast("state " + tokenX + " " + tokenY);
+
+        } else if (p[0].equals("setmap") && p.length >= 4) {
+            // GM picks the displayed battlemap and the grid fitted to it.
+            if (!c.role.equals("gm")) { c.send("denied only the GM may change the map"); return; }
+            int nc, nr;
+            try { nc = Integer.parseInt(p[1]); nr = Integer.parseInt(p[2]); }
+            catch (NumberFormatException bad) { return; }
+            if (nc < 1 || nc > 100 || nr < 1 || nr > 100) return;
+            String url = p[3].equals("-") ? "" : p[3];
+            if (!url.isEmpty() && !validMediaUrl(url)) { c.send("denied invalid map url"); return; }
+            cols = nc; rows = nr; mapUrl = url;
+            if (tokenX >= cols) tokenX = cols - 1;   // keep token within the new grid
+            if (tokenY >= rows) tokenY = rows - 1;
+            broadcast("map " + cols + " " + rows + " " + mapMsg());
+            broadcast("state " + tokenX + " " + tokenY);
+
+        } else if (p[0].equals("settoken") && p.length >= 2) {
+            // GM picks the token image shown on the board.
+            if (!c.role.equals("gm")) { c.send("denied only the GM may change the token"); return; }
+            String url = p[1].equals("-") ? "" : p[1];
+            if (!url.isEmpty() && !validMediaUrl(url)) { c.send("denied invalid token url"); return; }
+            tokenUrl = url;
+            broadcast("token " + tokenMsg());
+        }
+    }
+
+    /** Active map/token as a single WS token ("-" means none, so the field is never empty). */
+    static String mapMsg()   { return mapUrl.isEmpty()   ? "-" : mapUrl; }
+    static String tokenMsg() { return tokenUrl.isEmpty() ? "-" : tokenUrl; }
+
+    /** Strip control chars (incl. the \t we use as a wire delimiter) and cap length. */
+    static String sanitizeChat(String s) {
+        StringBuilder b = new StringBuilder();
+        for (int i = 0; i < s.length() && b.length() < 500; i++) {
+            char ch = s.charAt(i);
+            if (ch == '\t' || ch == '\r' || ch == '\n') ch = ' ';
+            if (ch < 0x20) continue;            // drop remaining control chars
+            b.append(ch);
+        }
+        return b.toString().trim();
+    }
+
+    // Standard dice notation: [N]dM[+/-K], e.g. "d20", "2d6", "1d8+3".
+    static final java.util.regex.Pattern DICE =
+        java.util.regex.Pattern.compile("(\\d{0,3})d(\\d{1,4})([+-]\\d{1,4})?");
+
+    /** Roll dice server-side and broadcast the result as a chat-style line. */
+    static void rollDice(Client c, String notation) {
+        java.util.regex.Matcher m = DICE.matcher(notation);
+        if (!m.matches()) { c.send("denied bad dice notation"); return; }
+        int n     = m.group(1).isEmpty() ? 1 : Integer.parseInt(m.group(1));
+        int sides = Integer.parseInt(m.group(2));
+        int mod   = m.group(3) == null ? 0 : Integer.parseInt(m.group(3));
+        if (n < 1 || n > 100 || sides < 2 || sides > 1000) { c.send("denied dice out of range"); return; }
+
+        int total = mod;
+        StringBuilder detail = new StringBuilder();
+        for (int i = 0; i < n; i++) {
+            int r = RNG.nextInt(sides) + 1;
+            total += r;
+            if (i > 0) detail.append(',');
+            detail.append(r);
+        }
+        if (mod != 0) detail.append(mod > 0 ? " +" + mod : " " + mod);
+        broadcast("roll\t" + c.user + "\t" + notation + "\t" + total + "\t" + detail);
+    }
+
+    /** A media URL safe to broadcast: must point at our own /media/ space, no traversal. */
+    static boolean validMediaUrl(String u) {
+        if (u == null || u.isEmpty() || u.length() > 512) return false;
+        if (!u.startsWith("/media/") || u.contains("..")) return false;
+        for (int i = 0; i < u.length(); i++) {
+            char ch = u.charAt(i);
+            if (!(Character.isLetterOrDigit(ch) || "/._%-".indexOf(ch) >= 0)) return false;
+        }
+        return true;
     }
 
     static void broadcast(String msg) {

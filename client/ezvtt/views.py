@@ -1,10 +1,12 @@
 import mimetypes
+from urllib.parse import quote, unquote
 
-from django.http import Http404, HttpResponse
-from django.shortcuts import render
+from django.http import (Http404, HttpResponse, HttpResponseBadRequest,
+                         HttpResponseForbidden, JsonResponse)
+from django.shortcuts import redirect, render
 from django.utils.safestring import mark_safe
 
-from . import wiki_content
+from . import media_store, wiki_content
 
 GAME_NAME = "EzVTT"
 
@@ -37,7 +39,12 @@ def index(request):
 
 
 def play(request):
-    return render(request, "play.html", _ctx(request))
+    ctx = _ctx(request)
+    # The GM gets the image library so the play space can offer map/token pickers.
+    if ctx["role"] == "gm":
+        ctx["battlemaps"] = media_store.list_images("battlemaps")
+        ctx["tokens"] = media_store.list_images("tokens")
+    return render(request, "play.html", ctx)
 
 
 def login(request):
@@ -83,4 +90,66 @@ def wiki_media(request, rel):
 
 
 def admin(request):
-    return render(request, "admin.html", _ctx(request))
+    ctx = _ctx(request)
+    # Image library is only meaningful for the GM; the template also gates it.
+    if ctx["role"] == "gm":
+        ctx["categories"] = [
+            {"kind": "battlemaps", "label": "Battlemaps",
+             "images": media_store.list_images("battlemaps")},
+            {"kind": "tokens", "label": "Tokens",
+             "images": media_store.list_images("tokens")},
+        ]
+        ctx["upload_ok"] = request.GET.get("ok")
+        ctx["upload_error"] = request.GET.get("error")
+    return render(request, "admin.html", ctx)
+
+
+def admin_upload(request, kind):
+    """Receive a battlemap/token image upload. GM-only, POST-only.
+
+    Role comes from the X-EzVTT-Role header the Java gateway injects at the
+    security boundary; Django trusts it (this app never faces the net).
+    """
+    if _ctx(request)["role"] != "gm":
+        return HttpResponseForbidden("The image library is for the Game Master only.")
+    if request.method != "POST":
+        raise Http404()
+
+    upload = request.FILES.get("image")
+    if not upload:
+        return redirect("/admin?error=" + quote("No file selected."))
+    try:
+        media_store.save_upload(kind, upload)
+    except ValueError as exc:
+        return redirect("/admin?error=" + quote(str(exc)))
+    return redirect("/admin?ok=" + quote(f"Uploaded {upload.name}"))
+
+
+def admin_grid(request):
+    """Persist the grid size the GM fitted to a battlemap (POST: url, cols, rows).
+
+    Called from the play space when the GM resizes the grid; the live broadcast
+    goes over the WebSocket, this just saves the size to the image's metadata.
+    """
+    if _ctx(request)["role"] != "gm":
+        return HttpResponseForbidden("GM only")
+    if request.method != "POST":
+        raise Http404()
+    parts = request.POST.get("url", "").split("/")   # /media/<kind>/<source>/<name>
+    if len(parts) != 5 or parts[1] != "media":
+        return HttpResponseBadRequest("bad image url")
+    try:
+        grid = media_store.set_grid(parts[2], parts[3], unquote(parts[4]),
+                                    request.POST.get("cols"), request.POST.get("rows"))
+    except ValueError as exc:
+        return HttpResponseBadRequest(str(exc))
+    return JsonResponse(grid)
+
+
+def media_file(request, kind, source, name):
+    """Serve a stored battlemap/token image (sample or uploaded)."""
+    target = media_store.resolve(kind, source, name)
+    if not target:
+        raise Http404("image not found")
+    ctype = mimetypes.guess_type(str(target))[0] or "application/octet-stream"
+    return HttpResponse(target.read_bytes(), content_type=ctype)
