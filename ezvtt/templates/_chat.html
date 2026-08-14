@@ -1,0 +1,36 @@
+{# The chat and dice panel, shared by the GM screen and the player view.
+
+   Deliberately NOT included in display.html: that window is what the whole
+   table looks at, and every pixel of interface is a pixel of map they cannot
+   see. #}
+<aside class="chat" id="chat-panel">
+  <button class="chat__toggle" data-chat-toggle type="button"
+          title="Show or hide chat" aria-label="Show or hide chat"></button>
+
+  <div class="chat__inner">
+    <h2 class="chat__title">Table</h2>
+
+    <div class="chat__log" data-chat-log role="log" aria-live="polite"></div>
+
+    <div class="chat__dice" data-dice-tray></div>
+
+    <form class="chat__form" data-chat-form>
+      <div class="row" style="gap:4px">
+        {# GM only: the roster is empty for players, and the select hides itself. #}
+        <select class="input input--sm" data-chat-whisper hidden
+                aria-label="Send to"></select>
+
+        <label class="chat__private" title="Only you and the GM will see the result">
+          <input type="checkbox" data-chat-private>
+          <span>private roll</span>
+        </label>
+      </div>
+
+      <div class="row" style="gap:4px">
+        <input class="input" type="text" data-chat-input maxlength="1000"
+               placeholder="Say something, or /r 2d6+3" aria-label="Message">
+        <button class="btn btn--sm btn--primary" type="submit">Send</button>
+      </div>
+    </form>
+  </div>
+</aside>

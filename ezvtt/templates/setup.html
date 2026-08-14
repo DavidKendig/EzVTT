@@ -1,0 +1,71 @@
+{# First-run wizard. Nothing else on the server is reachable until this is
+   completed, so it deliberately has no navigation away from itself. #}
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="dark light">
+  <title>Set up EzVTT</title>
+  <link rel="stylesheet" href="/static/css/ezvtt.css">
+</head>
+<body class="gate">
+  <main class="gate__panel">
+    <div class="gate__brand"><span>Ez</span>VTT</div>
+    <h1 class="gate__title">Create the administrator account</h1>
+    <p class="gate__intro">
+      This is the account that manages the server and everyone else's access.
+      EzVTT will not run until it exists.
+    </p>
+
+    {% if error %}
+      <p class="gate__error" role="alert">{{ error }}</p>
+    {% endif %}
+
+    <form method="post" action="/setup" class="gate__form" autocomplete="off">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+
+      <label class="gate__label" for="username">Username</label>
+      <input class="input" type="text" id="username" name="username" required
+             autofocus maxlength="31" value="{{ username or '' }}"
+             autocomplete="username">
+
+      <label class="gate__label" for="display_name">Display name <span class="muted">(optional)</span></label>
+      <input class="input" type="text" id="display_name" name="display_name"
+             maxlength="60" value="{{ display_name or '' }}">
+
+      <label class="gate__label" for="password">Password</label>
+      <input class="input" type="password" id="password" name="password" required
+             minlength="8" autocomplete="new-password">
+      <p class="gate__hint">
+        At least 8 characters. A short phrase you will remember beats a short
+        password you will not.
+      </p>
+
+      <label class="gate__label" for="confirm">Confirm password</label>
+      <input class="input" type="password" id="confirm" name="confirm" required
+             minlength="8" autocomplete="new-password">
+
+      <button class="btn btn--primary gate__submit" type="submit">
+        Create account and start
+      </button>
+    </form>
+
+    {% if bypass_available %}
+      <div class="gate__alt">
+        <form method="post" action="/login/bypass">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+          <button class="btn btn--ghost btn--sm" type="submit">
+            Skip for now (beta)
+          </button>
+        </form>
+        <p class="gate__hint">
+          Signs you in as a temporary GM without an account. This prompt will
+          reappear next time, and the option is refused entirely in
+          <code>internet</code> and <code>vps</code> modes.
+        </p>
+      </div>
+    {% endif %}
+  </main>
+</body>
+</html>

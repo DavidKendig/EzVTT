@@ -1,157 +1,58 @@
-# ============================================================
-# EzVTT .gitignore
-# ============================================================
+# --- EzVTT runtime data -------------------------------------------------------
+# Everything the running application creates. Back this up by copying data/;
+# never commit it. Contains uploaded maps, the SQLite database (with password
+# hashes and session tokens), and the PID file.
+data/
 
-# ----- Claude Code / local agent memory -----
-.claude/
+# --- Map assets ---------------------------------------------------------------
+# The Tom Cartos Open License Asset Bundle is ~537 MB across 800 files and is
+# installed by scripts/fetch-assets rather than tracked here. The licence notice
+# is committed; the artwork is not.
+assets/bundled/*
+!assets/bundled/LICENSE-ASSETS.md
+!assets/bundled/.gitkeep
 
-# ============================================================
-# Python (Django client-side components)
-# ============================================================
+# The source bundle as delivered, if it is unpacked inside the repo.
+Tom Cartos Open License Asset Bundle/
+
+# --- Generated at packaging time ----------------------------------------------
+# Produced by scripts/gen_third_party_licenses.py for bundled builds only.
+THIRD_PARTY_LICENSES.md
+
+# --- Python -------------------------------------------------------------------
+.venv/
+venv/
+env/
 __pycache__/
 *.py[cod]
 *$py.class
-*.so
-.Python
-build/
-develop-eggs/
-dist/
-downloads/
-eggs/
-.eggs/
-lib/
-lib64/
-parts/
-sdist/
-var/
-wheels/
-share/python-wheels/
 *.egg-info/
-.installed.cfg
-*.egg
-MANIFEST
-
-# Virtual environments
-.env
-.venv
-env/
-venv/
-ENV/
-env.bak/
-venv.bak/
-
-# Django
-*.log
-local_settings.py
-db.sqlite3
-db.sqlite3-journal
-media/
-staticfiles/
-
-# Wiki content pulled from the campaign repo at runtime
-.wiki_cache/
-
-# Testing / coverage
-.tox/
-.nox/
-.coverage
-.coverage.*
-.cache
-.pytest_cache/
-htmlcov/
-nosetests.xml
-coverage.xml
-*.cover
-.hypothesis/
-
-# Type checkers / linters
-.mypy_cache/
-.dmypy.json
-dmypy.json
-.pyre/
-.ruff_cache/
-
-# Jupyter
-.ipynb_checkpoints
-
-# ============================================================
-# Java (server back end / networking)
-# ============================================================
-*.class
-*.log
-*.ctxt
-.mtj.tmp/
-*.jar
-*.war
-*.nar
-*.ear
-*.zip
-*.tar.gz
-*.rar
-hs_err_pid*
-replay_pid*
-
-# Maven
-target/
-pom.xml.tag
-pom.xml.releaseBackup
-pom.xml.versionsBackup
-pom.xml.next
-release.properties
-dependency-reduced-pom.xml
-buildNumber.properties
-.mvn/timing.properties
-.mvn/wrapper/maven-wrapper.jar
-
-# Gradle
-.gradle/
+.eggs/
 build/
-gradle-app.setting
-!gradle-wrapper.jar
-!gradle-wrapper.properties
-.gradletasknamecache
+dist/
+*.spec
+!ezvtt.spec
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+.tox/
 
-# ============================================================
-# JavaScript / Node (front end assets)
-# ============================================================
-node_modules/
-jspm_packages/
-bower_components/
-.npm
-.eslintcache
-.node_repl_history
-*.tsbuildinfo
-.next/
-out/
-.nuxt/
-.cache/
-.parcel-cache/
-.yarn/cache
-.yarn/unplugged
-.pnp.*
-npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
-pnpm-debug.log*
-
-# ============================================================
-# Editors / OS
-# ============================================================
-.idea/
+# --- Editors and OS -----------------------------------------------------------
 .vscode/
+.idea/
 *.swp
-*.swo
 *~
 .DS_Store
 Thumbs.db
 desktop.ini
 
-# ============================================================
-# Secrets / config (never commit)
-# ============================================================
-*.pem
-*.key
-*.keystore
-secrets.json
-.env.*
-!.env.example
+# --- Local overrides ----------------------------------------------------------
+.env
+.env.local
+ezvtt.local.toml
+
+# --- Logs ---------------------------------------------------------------------
+*.log
+logs/

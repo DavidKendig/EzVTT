@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="dark light">
+  <title>{% block title %}{{ page_title }}{% endblock %} · EzVTT</title>
+  <link rel="stylesheet" href="/static/css/ezvtt.css">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='6' fill='%230d1014'/><path d='M8 8h16M8 16h16M8 24h16M8 8v16M16 8v16M24 8v16' stroke='%23d9a441' stroke-width='2' fill='none'/></svg>">
+  {% block head %}{% endblock %}
+</head>
+<body>
+  <div class="app">
+    {% if bypass_active %}
+      {# Deliberately loud. An unauthenticated GM session must never be mistaken
+         for a real one -- see ADR-007 and the Phase 3 notes. #}
+      <div class="banner banner--warning" role="status">
+        <span class="banner__icon" aria-hidden="true">⚠</span>
+        <span>
+          <strong>Beta login bypass is active.</strong>
+          Anyone who can reach this server can act as GM without signing in.
+        </span>
+        <span class="banner__spacer"></span>
+        <span class="mono muted">--no-bypass to disable</span>
+      </div>
+    {% endif %}
+
+    <header class="app__header">
+      <a class="brand" href="/">
+        <span class="brand__ez">Ez</span><span>VTT</span>
+        <span class="brand__version">{{ version }}</span>
+      </a>
+
+      <span class="chip chip--mode" title="Run mode">{{ mode }}</span>
+
+      <span class="header__spacer"></span>
+
+      {% block header_actions %}{% endblock %}
+
+      {% if principal.is_admin %}
+        <a class="btn btn--sm btn--ghost" href="/admin">Admin</a>
+      {% endif %}
+
+      <span class="chip {% if principal.is_gm %}chip--gm{% endif %}"
+            title="Signed in as {{ principal.username }}">
+        {{ principal.display_name }}
+      </span>
+
+      {% if principal.is_authenticated %}
+        <form method="post" action="/logout" style="display:contents">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+          <button class="btn btn--sm btn--ghost" type="submit">Sign out</button>
+        </form>
+      {% endif %}
+    </header>
+
+    <div class="app__body">
+      {% block body %}{% endblock %}
+    </div>
+  </div>
+
+  {% block scripts %}{% endblock %}
+</body>
+</html>

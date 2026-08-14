@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="dark light">
+  <title>Sign in · EzVTT</title>
+  <link rel="stylesheet" href="/static/css/ezvtt.css">
+</head>
+<body class="gate">
+  <main class="gate__panel">
+    <div class="gate__brand"><span>Ez</span>VTT</div>
+    <h1 class="gate__title">{{ campaign_name }}</h1>
+
+    {% if error %}
+      <p class="gate__error" role="alert">{{ error }}</p>
+    {% endif %}
+
+    <form method="post" action="/login" class="gate__form">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <input type="hidden" name="next" value="{{ next or '/' }}">
+
+      <label class="gate__label" for="username">Username</label>
+      <input class="input" type="text" id="username" name="username" required
+             autofocus value="{{ username or '' }}" autocomplete="username">
+
+      <label class="gate__label" for="password">Password</label>
+      <input class="input" type="password" id="password" name="password" required
+             autocomplete="current-password">
+
+      <button class="btn btn--primary gate__submit" type="submit">Sign in</button>
+    </form>
+
+    {% if bypass_available %}
+      <div class="gate__alt">
+        <form method="post" action="/login/bypass">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+          <button class="btn gate__submit" type="submit">Skip login (beta)</button>
+        </form>
+        <p class="gate__hint">
+          Signs in as a temporary GM without a password. Disabled automatically
+          in <code>internet</code> and <code>vps</code> modes, and switchable off
+          under Admin &rarr; Settings.
+        </p>
+      </div>
+    {% endif %}
+
+    <p class="gate__footer muted">
+      Ask your GM for an account if you do not have one.
+    </p>
+  </main>
+</body>
+</html>

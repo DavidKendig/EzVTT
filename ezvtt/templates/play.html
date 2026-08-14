@@ -1,0 +1,32 @@
+{% extends "base.html" %}
+
+{% block body %}
+<main class="board-area" id="board-area">
+  <div class="board-bar">
+    <strong id="active-map-name">Waiting for the GM</strong>
+    <span class="row" style="gap:6px; margin-left:auto">
+      <span class="status-dot" id="connection-dot" aria-hidden="true"></span>
+      <span class="muted" id="connection-status">Connecting&hellip;</span>
+    </span>
+  </div>
+
+  <div class="board">
+    <canvas class="board__canvas" id="board-canvas"></canvas>
+
+    <div class="empty board__empty" id="board-empty">
+      <div class="empty__icon" aria-hidden="true">🗺</div>
+      <p class="empty__title">No map on the table yet</p>
+      <p class="empty__body">
+        When the GM puts a map down it will appear here automatically. You will
+        only ever see the parts they have revealed.
+      </p>
+    </div>
+  </div>
+</main>
+
+{% include "_chat.html" %}
+{% endblock %}
+
+{% block scripts %}
+<script type="module" src="/static/js/play.js"></script>
+{% endblock %}

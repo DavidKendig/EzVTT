@@ -1,0 +1,165 @@
+{% extends "base.html" %}
+{% set page_title = "Admin" %}
+
+{% block header_actions %}
+  <a class="btn btn--sm btn--ghost" href="/">Back to the table</a>
+{% endblock %}
+
+{% block body %}
+<main class="app__main">
+  <div class="stack" style="max-width: 980px">
+
+    {% if ok %}<div class="banner banner--ok" role="status">{{ ok }}</div>{% endif %}
+    {% if error %}<div class="banner banner--error" role="alert">{{ error }}</div>{% endif %}
+
+    <div class="card">
+      <h2 class="card__title">Accounts</h2>
+      <table class="table">
+        <thead>
+          <tr>
+            <th>Account</th><th>Role</th><th>Status</th>
+            <th>Last signed in</th><th></th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for user in users %}
+            <tr {% if not user.is_active %}class="row--muted"{% endif %}>
+              <td>
+                <strong>{{ user.display_name }}</strong>
+                <span class="muted mono">{{ user.username }}</span>
+                {% if user.username == bypass_username %}
+                  <span class="chip chip--warn">beta bypass</span>
+                {% endif %}
+                {% if user.id == principal.user_id %}
+                  <span class="chip">you</span>
+                {% endif %}
+              </td>
+              <td>
+                <form method="post" action="/admin/users/{{ user.id }}/role" class="row">
+                  <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                  <select class="input input--sm" name="role" onchange="this.form.submit()">
+                    {% for value in ("admin", "gm", "player") %}
+                      <option value="{{ value }}" {% if user.role == value %}selected{% endif %}>
+                        {{ value }}
+                      </option>
+                    {% endfor %}
+                  </select>
+                </form>
+              </td>
+              <td>
+                {% if user.is_active %}
+                  <span class="muted">active</span>
+                  {% if user.sessions %}
+                    <span class="chip">{{ user.sessions }} session{{ "" if user.sessions == 1 else "s" }}</span>
+                  {% endif %}
+                {% else %}
+                  <span class="muted">disabled</span>
+                {% endif %}
+              </td>
+              <td class="muted mono">{{ user.last_login_at or "never" }}</td>
+              <td>
+                <div class="row row--wrap" style="gap:4px; justify-content:flex-end">
+                  <form method="post" action="/admin/users/{{ user.id }}/active">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                    <input type="hidden" name="active" value="{{ 0 if user.is_active else 1 }}">
+                    <button class="btn btn--ghost btn--sm" type="submit">
+                      {{ "Disable" if user.is_active else "Enable" }}
+                    </button>
+                  </form>
+
+                  <details class="inline-form">
+                    <summary class="btn btn--ghost btn--sm">Reset password</summary>
+                    <form method="post" action="/admin/users/{{ user.id }}/password"
+                          class="row inline-form__body">
+                      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                      <input class="input input--sm" type="text" name="password"
+                             minlength="8" required placeholder="new password">
+                      <button class="btn btn--sm" type="submit">Set</button>
+                    </form>
+                  </details>
+
+                  {% if user.id != principal.user_id %}
+                    <form method="post" action="/admin/users/{{ user.id }}/delete"
+                          onsubmit="return confirm('Delete {{ user.username }}? This cannot be undone.')">
+                      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                      <button class="btn btn--ghost btn--sm btn--danger" type="submit">Delete</button>
+                    </form>
+                  {% endif %}
+                </div>
+              </td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+
+    <div class="card">
+      <h2 class="card__title">Add an account</h2>
+      <form method="post" action="/admin/users" class="row row--wrap" autocomplete="off">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <input class="input" style="max-width:180px" type="text" name="username"
+               placeholder="username" required maxlength="31" autocomplete="off">
+        <input class="input" style="max-width:180px" type="text" name="display_name"
+               placeholder="display name" maxlength="60">
+        <input class="input" style="max-width:200px" type="text" name="password"
+               placeholder="password" required minlength="8" autocomplete="new-password">
+        <select class="input" style="max-width:130px" name="role">
+          <option value="player">player</option>
+          <option value="gm">gm</option>
+          <option value="admin">admin</option>
+        </select>
+        <button class="btn btn--primary" type="submit">Create</button>
+      </form>
+      <p class="card__hint" style="margin-top:10px">
+        Players can move only their own tokens and see only what you have
+        revealed. GMs get the full table. Give out admin sparingly &mdash; it
+        controls accounts.
+      </p>
+    </div>
+
+    <div class="card">
+      <h2 class="card__title">Settings</h2>
+
+      <form method="post" action="/admin/settings/campaign" class="row" style="margin-bottom:16px">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <label class="control__label" for="campaign_name">Campaign name</label>
+        <input class="input" style="max-width:280px" type="text" id="campaign_name"
+               name="campaign_name" value="{{ campaign_name }}" maxlength="120">
+        <button class="btn btn--sm" type="submit">Save</button>
+      </form>
+
+      <div class="stack">
+        <div class="row row--wrap">
+          <strong>Beta login bypass</strong>
+          {% if bypass_enabled and bypass_allowed %}
+            <span class="chip chip--warn">on</span>
+          {% else %}
+            <span class="chip">off</span>
+          {% endif %}
+        </div>
+
+        {% if bypass_allowed %}
+          <form method="post" action="/admin/settings/bypass" class="row">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+            <input type="hidden" name="enabled" value="{{ 0 if bypass_enabled else 1 }}">
+            <button class="btn btn--sm {{ 'btn--danger' if bypass_enabled else '' }}" type="submit">
+              {{ "Turn the bypass off" if bypass_enabled else "Turn the bypass on" }}
+            </button>
+          </form>
+          <p class="card__hint">
+            While this is on, anyone who can reach this server can sign in as GM
+            with one click. Fine on a laptop you are testing on; not otherwise.
+          </p>
+        {% else %}
+          <p class="card__hint">
+            Refused in <code>{{ mode }}</code> mode and cannot be enabled here.
+            This is not configurable &mdash; a one-click unauthenticated GM login
+            has no business on a server the public can reach.
+          </p>
+        {% endif %}
+      </div>
+    </div>
+
+  </div>
+</main>
+{% endblock %}

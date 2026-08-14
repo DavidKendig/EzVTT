@@ -1,0 +1,90 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "ezvtt"
+version = "0.1.0.dev0"
+description = "A virtual tabletop built for getting a map on the table fast."
+readme = "README.md"
+requires-python = ">=3.10"
+license = "Apache-2.0"
+license-files = ["LICENSE", "NOTICE"]
+keywords = ["vtt", "virtual-tabletop", "rpg", "ttrpg", "battlemap", "game-master"]
+classifiers = [
+    "Development Status :: 2 - Pre-Alpha",
+    "Environment :: Web Environment",
+    "Framework :: FastAPI",
+    "Intended Audience :: End Users/Desktop",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Games/Entertainment :: Role-Playing",
+]
+
+# Kept in step with requirements.txt, which carries the rationale for each entry
+# and for the dependencies deliberately absent. See also docs/DECISIONS.md.
+dependencies = [
+    "fastapi>=0.115",
+    "uvicorn>=0.30",
+    "websockets>=13.0",
+    "python-multipart>=0.0.9",
+    "jinja2>=3.1",
+    "pillow>=10.0",
+    "markdown>=3.5",
+    "qrcode>=7.4",
+]
+
+[project.optional-dependencies]
+# Optional, dynamically imported, and omittable without loss of core function.
+# LGPL 2.1 -- see the acknowledgements in README.md.
+mdns = ["zeroconf>=0.130"]
+dev = ["pytest>=8.0", "pytest-asyncio>=0.23", "httpx>=0.27", "ruff>=0.5"]
+build = ["pyinstaller>=6.0"]
+
+[project.scripts]
+ezvtt = "ezvtt.__main__:main"
+
+[project.urls]
+Homepage = "https://github.com/EzVTT/EzVTT"
+Documentation = "https://github.com/EzVTT/EzVTT/blob/main/README.md"
+Issues = "https://github.com/EzVTT/EzVTT/issues"
+
+[tool.setuptools.packages.find]
+include = ["ezvtt*"]
+
+[tool.setuptools.package-data]
+ezvtt = ["templates/**/*.html", "static/**/*", "migrations/*.sql"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q --strict-markers"
+
+[tool.ruff]
+line-length = 88
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "UP", "B", "S", "C4", "SIM"]
+ignore = [
+    "S101",  # assert: fine in tests
+    "E501",  # line length is enforced by the formatter, not the linter
+    # Depends(...) and File(...) in argument defaults is how FastAPI declares
+    # dependencies -- it is the documented idiom, not the mutable-default trap
+    # this rule exists to catch.
+    "B008",
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = ["S", "B"]
+# Binding to 0.0.0.0 is the entire point of lan/hotspot/internet/vps modes.
+"ezvtt/config.py" = ["S104"]
+"ezvtt/__main__.py" = ["S104"]
+# S105 flags any string constant whose name looks password-ish. Here it catches
+# a settings *key* name and a SQL SELECT, neither of which is a credential.
+# Kept scoped to these two files so a genuine hardcoded secret elsewhere still
+# trips the rule.
+"ezvtt/auth.py" = ["S105"]
+"ezvtt/state.py" = ["S105"]

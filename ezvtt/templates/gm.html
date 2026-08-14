@@ -1,0 +1,232 @@
+{% extends "base.html" %}
+
+{% block header_actions %}
+  <span class="row" style="gap:6px">
+    <span class="status-dot" id="connection-dot" aria-hidden="true"></span>
+    <span class="muted" id="connection-status">Connecting&hellip;</span>
+  </span>
+  <span class="muted" id="presence"></span>
+  <button class="btn btn--sm" id="open-display" type="button">Open Display Window</button>
+{% endblock %}
+
+{% block body %}
+<aside class="sidebar">
+
+  <section class="sidebar__section">
+    <h2 class="sidebar__title">Maps</h2>
+
+    <div class="dropzone" id="dropzone">
+      <div class="dropzone__icon" aria-hidden="true">🗺</div>
+      <p class="dropzone__text">Drop a battlemap here</p>
+      <button class="btn btn--primary btn--sm" id="upload-btn" type="button">Choose a file</button>
+      <input type="file" id="file-input" accept="image/*" multiple hidden>
+    </div>
+
+    <div class="map-library" id="map-library"></div>
+  </section>
+
+  <section class="sidebar__section" id="grid-panel" hidden>
+    <h2 class="sidebar__title">Grid</h2>
+
+    <div class="control">
+      <label class="control__label" for="grid-size">
+        Square size <output class="control__value" id="grid-size-out">70 px</output>
+      </label>
+      {# Fine step: lining a grid up with hand-drawn art routinely lands on a
+         fractional pixel, and being half a pixel out compounds across a big map. #}
+      <input class="control__range" type="range" id="grid-size"
+             min="4" max="400" step="0.1" value="70">
+      <p class="control__hint">Drag until the squares line up with the artwork.</p>
+    </div>
+
+    <div class="control">
+      <label class="control__label" for="grid-offset-x">
+        Offset X <output class="control__value" id="grid-offset-x-out">0 px</output>
+      </label>
+      <input class="control__range" type="range" id="grid-offset-x"
+             min="-400" max="400" step="1" value="0">
+    </div>
+
+    <div class="control">
+      <label class="control__label" for="grid-offset-y">
+        Offset Y <output class="control__value" id="grid-offset-y-out">0 px</output>
+      </label>
+      <input class="control__range" type="range" id="grid-offset-y"
+             min="-400" max="400" step="1" value="0">
+      <p class="control__hint">Arrow keys nudge by 1 px, Shift+arrow by 10.</p>
+    </div>
+
+    <div class="control">
+      <label class="control__label" for="grid-opacity">
+        Opacity <output class="control__value" id="grid-opacity-out">25%</output>
+      </label>
+      <input class="control__range" type="range" id="grid-opacity"
+             min="0" max="1" step="0.01" value="0.25">
+    </div>
+
+    <div class="control control--inline">
+      <label class="control__label" for="grid-colour">Colour</label>
+      <input class="control__colour" type="color" id="grid-colour" value="#000000">
+    </div>
+
+    <div class="control control--inline">
+      <label class="control__label" for="grid-visible">Show grid</label>
+      <input type="checkbox" id="grid-visible" checked>
+    </div>
+
+    <div class="row row--wrap" style="margin-top:12px">
+      <button class="btn btn--sm" id="grid-fit" type="button">Fit view</button>
+      <button class="btn btn--sm btn--danger" id="clear-table" type="button">Clear table</button>
+    </div>
+  </section>
+
+  <section class="sidebar__section" id="fog-panel" hidden>
+    <h2 class="sidebar__title">
+      Fog of war <span class="muted" id="fog-status"></span>
+    </h2>
+
+    <div class="row" style="gap:4px">
+      <button class="btn btn--sm btn--primary" id="tool-select" type="button">Select</button>
+      <button class="btn btn--sm" id="tool-fog" type="button">Fog brush</button>
+    </div>
+
+    <div class="control">
+      <label class="control__label" for="fog-brush">
+        Brush size <output class="control__value" id="fog-brush-out">2 sq</output>
+      </label>
+      <input class="control__range" type="range" id="fog-brush"
+             min="0.5" max="20" step="0.5" value="2">
+      <p class="control__hint">
+        Drag to reveal. Hold <kbd>Shift</kbd> while dragging to conceal again.
+      </p>
+    </div>
+
+    <div class="row row--wrap" style="gap:4px">
+      <button class="btn btn--sm" id="fog-reveal-all" type="button">Reveal all</button>
+      <button class="btn btn--sm btn--danger" id="fog-hide-all" type="button">Hide all</button>
+    </div>
+
+    <div class="control control--inline">
+      <label class="control__label" for="player-view">See what players see</label>
+      <input type="checkbox" id="player-view">
+    </div>
+    <p class="control__hint">
+      A new map starts fully concealed. Players are sent a copy of the map with
+      the hidden parts <em>removed</em> &mdash; not covered over &mdash; so there
+      is nothing for them to peek at.
+    </p>
+  </section>
+
+  <section class="sidebar__section" id="asset-panel">
+    <h2 class="sidebar__title">
+      Assets <span class="muted" data-asset-status></span>
+    </h2>
+
+    <input class="input" type="search" placeholder="Search assets&hellip;"
+           data-asset-search aria-label="Search assets">
+    <select class="input" data-asset-category aria-label="Filter by category">
+      <option value="">All</option>
+    </select>
+
+    <div class="asset-grid" data-asset-grid></div>
+    <button class="btn btn--sm" data-asset-more type="button" hidden>Load more</button>
+
+    <p class="control__hint">
+      Drag a tile onto the map, or click it to drop one in the middle.
+      Hold <kbd>Alt</kbd> while dragging to ignore the grid.
+    </p>
+  </section>
+
+  <section class="sidebar__section" id="token-panel" hidden>
+    <h2 class="sidebar__title">Selected token</h2>
+    <strong id="token-name">Token</strong>
+
+    <div class="row">
+      <label class="control__label" for="token-w">Width</label>
+      <input class="input input--num" type="number" id="token-w" min="0.1" max="40" step="0.1">
+      <label class="control__label" for="token-h">Height</label>
+      <input class="input input--num" type="number" id="token-h" min="0.1" max="40" step="0.1">
+      <span class="muted">sq</span>
+    </div>
+
+    <div class="row">
+      <label class="control__label" for="token-rot">Rotation</label>
+      <input class="input input--num" type="number" id="token-rot" min="0" max="359" step="15">
+      <span class="muted">&deg;</span>
+    </div>
+
+    <div class="control">
+      <label class="control__label" for="token-label">Label</label>
+      <input class="input" type="text" id="token-label" maxlength="80" placeholder="none">
+    </div>
+
+    <div class="control">
+      <label class="control__label" for="token-layer">Layer</label>
+      <select class="input" id="token-layer">
+        <option value="map">Map &mdash; under everything</option>
+        <option value="object">Object &mdash; furniture and scenery</option>
+        <option value="token">Token &mdash; creatures, on top</option>
+      </select>
+    </div>
+
+    <div class="control control--inline">
+      <label class="control__label" for="token-hidden">Hidden from players</label>
+      <input type="checkbox" id="token-hidden">
+    </div>
+
+    <div class="control control--inline">
+      <label class="control__label" for="token-locked">Locked</label>
+      <input type="checkbox" id="token-locked">
+    </div>
+
+    <button class="btn btn--sm btn--danger" id="token-delete" type="button">
+      Delete token
+    </button>
+    <p class="control__hint">
+      Arrows nudge a square, <kbd>Shift</kbd> a tenth. <kbd>[</kbd> <kbd>]</kbd>
+      rotate. <kbd>Del</kbd> removes.
+    </p>
+  </section>
+
+</aside>
+
+<main class="board-area" id="board-area">
+  <div class="board-bar">
+    <strong id="active-map-name">No map on the table</strong>
+    <span class="muted mono" id="active-map-meta"></span>
+    <span class="muted" id="token-count"></span>
+
+    <span class="row" style="margin-left:auto; gap:10px">
+      <label class="row" style="gap:5px">
+        <input type="checkbox" id="snap-to-grid" checked>
+        <span class="muted">Snap to grid</span>
+      </label>
+      <button class="btn btn--sm btn--danger" id="clear-tokens" type="button">
+        Clear tokens
+      </button>
+    </span>
+  </div>
+
+  <div class="board">
+    <canvas class="board__canvas" id="board-canvas"></canvas>
+
+    <div class="empty board__empty" id="board-empty">
+      <div class="empty__icon" aria-hidden="true">🗺</div>
+      <p class="empty__title">Nothing on the table yet</p>
+      <p class="empty__body">
+        Drop a battlemap anywhere on this screen, or use <em>Choose a file</em>.
+        It goes straight onto the table &mdash; then drag the grid slider until
+        the squares line up.
+      </p>
+    </div>
+  </div>
+</main>
+
+{% include "_chat.html" %}
+
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+{% endblock %}
+
+{% block scripts %}
+<script type="module" src="/static/js/gm.js"></script>
+{% endblock %}
