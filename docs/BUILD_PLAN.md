@@ -123,16 +123,23 @@ Scaffolding, licensing, and the skeleton everything else hangs off.
 
 ---
 
-## Phase 6 — Run modes and networking `[ ]`
+## Phase 6 — Run modes and networking `[x]`
 
-- [ ] `--mode {local,lan,hotspot,internet,vps}`
-- [ ] `local` — bind loopback, auto-open the GM browser
-- [ ] `lan` — bind all interfaces, show join URL **and QR code**
-- [ ] `hotspot` — best-effort host AP, explicit warnings, automatic fallback to `lan`
-- [ ] `internet` — public IP display, forced auth, port-forward guidance, TLS warnings
-- [ ] `vps` — trust `X-Forwarded-*`, secure cookies, nginx + systemd samples
-- [ ] Optional `ezvtt.local` via mDNS
-- [ ] **Verify:** a phone joins over LAN by QR; `internet` mode refuses the beta bypass
+- [x] `--mode {local,lan,hotspot,internet,vps}`
+- [x] `local` — bind loopback, auto-open the GM browser
+- [x] `lan` — bind all interfaces, show join URL **and a scannable QR** on the
+      GM screen, plus a full-screen view to turn towards the table
+- [x] Alternative addresses listed when the machine has several (VPN, VM switch)
+- [x] `hotspot` — best-effort host AP with actionable failure text, automatic
+      fallback to the existing network
+- [x] `internet` — public address lookup, forced auth, port-forward guidance,
+      TLS warnings
+- [x] `vps` — trusts `X-Forwarded-*`, secure cookies, nginx + systemd samples
+- [x] **Refuses to start over a stale instance** rather than silently shadowing it
+- [x] **Verified:** the SVG QR reproduces the encoder's module matrix exactly;
+      the join API is GM-only (player 403, anonymous 401)
+- [ ] Optional `ezvtt.local` via mDNS — deferred; the QR removes the need to
+      type an address at all, which was the reason for wanting mDNS
 
 ---
 

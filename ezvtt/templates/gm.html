@@ -80,6 +80,15 @@
     </div>
   </section>
 
+  <section class="sidebar__section" id="join-panel">
+    <h2 class="sidebar__title">
+      Players join here
+      <button class="btn btn--ghost btn--sm" data-join-refresh type="button"
+              title="Re-check the address">&#8635;</button>
+    </h2>
+    <div class="join" data-join-body></div>
+  </section>
+
   <section class="sidebar__section" id="fog-panel" hidden>
     <h2 class="sidebar__title">
       Fog of war <span class="muted" id="fog-status"></span>
@@ -223,6 +232,17 @@
 </main>
 
 {% include "_chat.html" %}
+
+{# Full-screen QR: the GM turns the laptop round and the whole table scans at
+   once, instead of the machine being passed along it. #}
+<div class="join-overlay" id="join-overlay" hidden>
+  <div class="join-overlay__card">
+    <p class="join-overlay__title">Scan to join the game</p>
+    <div class="join-overlay__qr" data-overlay-qr></div>
+    <p class="join-overlay__url" data-overlay-url></p>
+    <p class="join-overlay__hint">Click anywhere, or press Esc, to close.</p>
+  </div>
+</div>
 
 <div class="toast" id="toast" role="status" aria-live="polite"></div>
 {% endblock %}

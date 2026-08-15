@@ -77,6 +77,63 @@ a check that every face of a d6 actually appears.
 
 ---
 
+## Session 7 — 2026-08-13 · Phase 6 complete · **join by QR**
+
+**Where the project stands:** seven phases. A player joins by pointing a phone
+camera at the GM's screen — no address typed, no instructions given.
+
+### Shipped
+
+- **`ezvtt/net.py`** — LAN address detection, per-mode join URLs, dependency-light
+  SVG QR rendering, best-effort hotspot, and a port-collision probe
+- **`ezvtt/routes/network.py`** — `/api/net/join`, GM-only
+- **`static/js/join.js`** + panel — QR, address, copy button, alternative
+  addresses, and a **full-screen view** to turn the laptop towards the table
+- Banner rewritten to show every usable address and point at the on-screen QR
+- `--hotspot-ssid` / `--hotspot-password`
+
+### Design notes
+
+**The QR is built from the raw module matrix**, not one of `qrcode`'s image
+factories — those pull in Pillow or lxml backends and give back a raster or
+markup that cannot be styled. A run of adjacent dark modules becomes one
+`<rect>`, which turns ~840 elements into 165 and inlines straight into the page,
+so it renders with no network at all.
+
+**Only `internet` mode looks up a public address.** Every other mode must work
+with no route to the internet, which `local` and `hotspot` routinely do.
+
+**The full-screen QR is deliberately light-on-dark-page.** A phone camera locks
+onto dark-on-white far faster, and the point is for six people to scan at once.
+
+### Verified
+
+- **The SVG reproduces the encoder's module matrix exactly** — the test parses
+  the generated SVG back into a matrix and compares. The encoder is a tested
+  library; the run-length packing is mine, so that is what is checked.
+- Join API is GM-only: player **403**, anonymous **401**
+- QR renders at 418×418 px on screen and Escape closes the overlay
+- Hotspot on this machine fails honestly: *"This Wi-Fi driver does not support
+  the hosted-network interface"* plus the Mobile Hotspot instructions
+- `local` and `vps` correctly refuse to invent an address to share
+
+**378 tests, ruff clean.**
+
+### A bug found the hard way
+
+Two servers were listening on 8080 — a stale `local`-mode process on
+`127.0.0.1` and the new `lan`-mode one on `0.0.0.0`. **Both bind successfully on
+Windows**, neither reports "address already in use", and loopback traffic goes
+to the more specific binding. So the stale instance silently shadowed the new
+one and I spent twenty minutes convinced a correctly-registered route was
+missing.
+
+EzVTT now probes the port before binding and refuses to start with instructions,
+rather than starting into a shadowed state with nothing to explain it. That
+failure would be far worse for a GM mid-session than for me.
+
+---
+
 ## First code review — 2026-08-13 · 8 findings, all fixed
 
 Ran the ruff config that had been in `pyproject.toml` since Phase 0 and never
@@ -130,20 +187,23 @@ the fail-closed path finding 3 added.
 
 ---
 
-## → Next step: Phase 6 — Run modes and networking
+## → Next step: Phase 7 — Obsidian vault and player notes
 
-The plumbing exists (`--mode` already drives binding and the security policy);
-this phase makes the networked modes genuinely usable.
+1. `ezvtt/vault.py` — point at a local vault path; read-only Markdown render of
+   `.md` with `[[wikilinks]]`, `![[embeds]]`, and frontmatter. **Path-traversal
+   guarded and confined to the vault root** — reuse `media.resolve_within`,
+   which already has the tests for it.
+2. **A folder allow-list.** This is the important one: a raw campaign vault is
+   full of GM notes, and one click from a player's screen to your plot outline
+   would be worse than no wiki at all. Default to nothing shared.
+3. Folder tree and search in a player-facing panel.
+4. Player notes: private per-user plus a shared board, persisted in the `notes`
+   table that already exists.
 
-1. `ezvtt/net.py` — LAN address, public IP lookup, and **QR code generation**
-   for the join URL. `qrcode` is already a dependency.
-2. Show the join URL and QR on the GM screen, not only in the console — the GM
-   is looking at the browser, not the terminal.
-3. `hotspot` mode: best-effort AP via Windows Mobile Hotspot / `nmcli`, with the
-   warnings already written in `docs/RUN_MODES.md` surfaced **in the app**, and
-   an automatic fall back to `lan` when it fails.
-4. `internet` mode: print the port to forward, and warn plainly about plain HTTP.
-5. `vps` mode: verify the `X-Forwarded-*` trust path behind a real proxy.
-6. Optional `ezvtt.local` via mDNS so players need not type an IP.
+**Done when:** a player can read the folders you chose and cannot reach a
+single file outside them, confirmed by asking for `../` and for an
+un-allow-listed path directly.
 
-**Done when:** a phone joins the table by pointing its camera at the GM screen.
+**Still open before 1.0:** no rate limiting on `/login`; chat history is global
+rather than per campaign; the packaging phase must run
+`scripts/gen_third_party_licenses.py`.

@@ -11,12 +11,12 @@ import atexit
 import contextlib
 import logging
 import os
-import socket
 import sys
+import textwrap
 import threading
 import webbrowser
 
-from . import __version__, config
+from . import __version__, config, net
 from .config import DEFAULT_PORT, RunMode, Settings
 
 log = logging.getLogger("ezvtt")
@@ -49,25 +49,17 @@ def _remove_pid_file() -> None:
 # Address discovery
 # --------------------------------------------------------------------------- #
 
-def _lan_address() -> str | None:
-    """Best guess at this machine's address on the local network.
-
-    Opens a UDP socket toward a public address and reads back the local end. No
-    packet is sent -- UDP connect only sets the socket's peer -- but it makes the
-    routing table pick the interface that would actually carry the traffic,
-    which beats guessing from a list of interfaces.
-    """
-    sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-    try:
-        sock.connect(("8.8.8.8", 80))
-        return sock.getsockname()[0]
-    except OSError:
-        return None
-    finally:
-        sock.close()
+def _wrap(text: str, width: int = 68) -> list[str]:
+    """Wrap for the console, preserving deliberate paragraph breaks."""
+    if not text:
+        return []
+    out: list[str] = []
+    for paragraph in text.split("\n"):
+        out.extend(textwrap.wrap(paragraph, width=width) or [""])
+    return out
 
 
-def _banner(settings: Settings) -> str:
+def _banner(settings: Settings, hotspot: net.HotspotResult | None = None) -> str:
     policy = settings.policy
     lines = [
         "",
@@ -80,16 +72,31 @@ def _banner(settings: Settings) -> str:
     lines.append(f"  GM screen       http://{host_for_url}:{settings.port}/")
     lines.append(f"  Display window  http://{host_for_url}:{settings.port}/display")
 
-    if policy.show_join_qr:
-        lan_ip = _lan_address()
-        if lan_ip:
-            lines.append("")
-            lines.append(f"  Players join at http://{lan_ip}:{settings.port}/play")
+    if hotspot is not None:
+        lines.append("")
+        if hotspot.started:
+            lines.append(f"  Wi-Fi network   {hotspot.ssid}")
         else:
+            lines.append(f"  ! Hotspot not started: {hotspot.message}")
+            lines += [f"  ! {line}" for line in _wrap(hotspot.detail)]
+            lines.append("  ! Carrying on over the existing network instead.")
+
+    if policy.show_join_qr or settings.mode is RunMode.INTERNET:
+        # Only internet mode reaches out for a public address; every other mode
+        # has to work with no route to the internet at all.
+        public = net.public_address() if settings.mode is RunMode.INTERNET else None
+        info = net.join_info(settings, public=public)
+
+        if info.url:
             lines.append("")
-            lines.append("  Could not determine this machine's network address.")
-            lines.append("  Find it with `ipconfig` or `ip addr` and share port "
-                         f"{settings.port}.")
+            lines.append(f"  Players join at {info.url}")
+            for alternative in info.alternatives:
+                lines.append(f"          or      {alternative}")
+            lines.append("")
+            lines.append("  A QR code for that address is on the GM screen.")
+        elif info.note:
+            lines.append("")
+            lines += [f"  {line}" for line in _wrap(info.note)]
 
     if settings.mode is RunMode.INTERNET:
         lines += [
@@ -174,6 +181,15 @@ def build_parser() -> argparse.ArgumentParser:
         help="enable the beta login bypass (ignored in internet and vps modes)",
     )
 
+    parser.add_argument(
+        "--hotspot-ssid", default="EzVTT",
+        help="network name to broadcast in hotspot mode (default: EzVTT)",
+    )
+    parser.add_argument(
+        "--hotspot-password", default="",
+        help="hotspot password, at least 8 characters (Windows requires one)",
+    )
+
     parser.add_argument("--version", action="version", version=f"EzVTT {__version__}")
     return parser
 
@@ -212,13 +228,40 @@ def main(argv: list[str] | None = None) -> int:
         )
         return 1
 
+    # Refuse to start over something already answering on this port. Binding
+    # would otherwise *succeed*: a stale instance on 127.0.0.1 and a new one on
+    # 0.0.0.0 coexist on Windows, loopback traffic goes to the stale one, and
+    # the GM sees an old build with nothing anywhere to explain why.
+    if net.port_already_serving(settings.port):
+        print(
+            f"\n  Something is already answering on port {settings.port}.\n"
+            f"\n  If that is an older EzVTT, stop it first:\n"
+            f"      .\\scripts\\stop.ps1          (or ./scripts/stop.sh)\n"
+            f"      .\\scripts\\kill.ps1 -Port {settings.port}\n"
+            f"\n  Otherwise choose another port with --port.\n",
+            file=sys.stderr,
+        )
+        return 1
+
+    # Best-effort, and genuinely likely to fail -- see docs/RUN_MODES.md. When it
+    # does, the server still starts: an access point is a convenience, and a GM
+    # on an existing network is better served by carrying on than by an abort.
+    hotspot = None
+    if settings.mode is RunMode.HOTSPOT:
+        log.info("Attempting to start a Wi-Fi hotspot...")
+        hotspot = net.start_hotspot(args.hotspot_ssid, args.hotspot_password)
+        if hotspot.started:
+            atexit.register(net.stop_hotspot)
+        else:
+            log.warning("Hotspot not started: %s", hotspot.message)
+
     _write_pid_file()
 
     # flush=True matters: Python block-buffers stdout when it is not a terminal,
     # so piping or redirecting the server would swallow this banner until the
     # buffer filled. In lan mode the banner carries the join URL players need --
     # it has to appear immediately, not eventually.
-    print(_banner(settings), flush=True)
+    print(_banner(settings, hotspot), flush=True)
 
     if settings.policy.open_browser and not args.no_browser and not args.reload:
         host = "localhost" if settings.host in ("0.0.0.0", "::") else settings.host

@@ -3,12 +3,14 @@
 import { AssetPanel } from "./assets-panel.js";
 import { Board } from "./board.js";
 import { ChatPanel } from "./chat.js";
+import { JoinPanel } from "./join.js";
 import { TableSocket } from "./ws.js";
 
 const board = new Board(document.getElementById("board-canvas"), { editable: true });
 const socket = new TableSocket("gm");
 const assetPanel = new AssetPanel(document.getElementById("asset-panel"));
 const chatPanel = new ChatPanel(document.getElementById("chat-panel"), socket);
+const joinPanel = new JoinPanel(document.getElementById("join-panel"));
 
 const el = (id) => document.getElementById(id);
 
@@ -553,3 +555,4 @@ socket.addEventListener("status", (e) => {
 
 socket.connect();
 assetPanel.init();
+joinPanel.load();

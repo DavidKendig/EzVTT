@@ -725,6 +725,92 @@ select.input { cursor: pointer; }
 .toast--success { border-color: var(--success); }
 .toast--error   { border-color: var(--danger); color: var(--danger); }
 
+/* ------------------------------------------------------------- join panel - */
+
+.join { display: flex; flex-direction: column; gap: 6px; }
+
+.join__qr {
+  align-self: center;
+  padding: 6px;
+  background: #fff;          /* a QR needs real white to scan reliably */
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  cursor: zoom-in;
+  line-height: 0;
+}
+
+.join__qr svg { width: 148px; height: 148px; display: block; }
+
+.join__url {
+  font-family: var(--font-mono);
+  font-size: .82rem;
+  color: var(--accent);
+  text-align: center;
+  overflow-wrap: anywhere;
+  user-select: all;          /* one click selects the whole address */
+}
+
+.join__alt-toggle {
+  font-size: .76rem;
+  color: var(--text-3);
+  cursor: pointer;
+}
+
+.join__alt {
+  font-family: var(--font-mono);
+  font-size: .74rem;
+  color: var(--text-2);
+  padding: 2px 0 0 8px;
+  user-select: all;
+}
+
+/* Full-screen QR for showing the table. Deliberately light: a phone camera
+   locks on to a dark-on-white code far faster than the inverse. */
+.join-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 200;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, .82);
+  cursor: zoom-out;
+}
+
+.join-overlay__card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+  padding: 4vh 4vw;
+  background: #fff;
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-2);
+}
+
+.join-overlay__title {
+  margin: 0;
+  font-size: 1.1rem;
+  font-weight: 600;
+  color: #10151b;
+}
+
+.join-overlay__qr svg {
+  width: min(58vh, 58vw);
+  height: min(58vh, 58vw);
+  display: block;
+}
+
+.join-overlay__url {
+  margin: 0;
+  font-family: var(--font-mono);
+  font-size: clamp(.9rem, 2.2vw, 1.4rem);
+  color: #10151b;
+  user-select: all;
+}
+
+.join-overlay__hint { margin: 0; font-size: .8rem; color: #5a6675; }
+
 /* ------------------------------------------------------------------ chat - */
 
 /* Docked to the right and collapsible. A GM mid-combat wants the whole map;
