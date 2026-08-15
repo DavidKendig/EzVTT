@@ -292,3 +292,53 @@ not actually true when written, and are now:
   cells) the player branch fell through and handed over the original map URL and
   an unfiltered token list. It now fails **closed** — no map, no tokens — and
   logs why.
+
+---
+
+## ADR-012 — A scene is the unit of prep; several may share one map
+
+**Date:** 2026-08-14 · **Status:** Accepted
+
+**Decision.** A scene is a map *plus* its own tokens and its own fog. A map may
+carry any number of them. Clicking a map in the library puts back the scene that
+was last on the table, not the map's oldest scene. Creating or copying a scene
+does **not** activate it. A scene's name is GM-only and never reaches a player's
+payload.
+
+**Context.** Phase 1 kept scenes one-to-one with maps and created them on demand,
+so a GM never had to learn what a scene was to get a map on the table. That is
+still true — uploading a map makes its first scene silently. What was missing is
+the second scene over the same artwork: "the tavern" and "the tavern, after the
+fight" are the same picture with different monsters standing on it and different
+parts of it revealed.
+
+**Why last-run rather than first.** With one scene per map the two were the same
+thing. With several, ordering by id would take a GM who clicked *Cliff Face*
+back to the encounter they finished two sessions ago, silently and with no way
+to tell from the library that it had happened.
+
+**Why a counter, not a timestamp.** The obvious implementation stamps
+`last_active_at` with `datetime('now')`. That has second resolution, and even
+sub-second SQLite formats inherit the platform clock's granularity — on Windows
+two switches a moment apart recorded the *same* instant, and the tie then broke
+by id, which is exactly the bug the column existed to fix. This was caught by a
+test, not by reasoning. `last_active_seq` is `MAX(seq) + 1` inside the same
+transaction that activates: it cannot tie, and it does not care what the clock
+does over DST or an NTP correction.
+
+**Why a new scene is not activated.** Adding or copying a scene is prep. Putting
+it in front of the table is the click on the scene itself. A GM tidying their
+scene list between fights must not blank the projector to do it.
+
+**Why the name is GM-only.** Scene names are where prep gets written down —
+"Ambush at the bridge", "The traitor reveals himself". The player payload carries
+the scene's id so a client can tell one from another across a switch, and nothing
+else about it. Same rule as fog and hidden tokens: it is not filtered on the
+client, it is never built into their snapshot. See ADR-004.
+
+**Consequences.** Deleting a scene takes its tokens and fog with it and leaves
+the map alone. Deleting the *active* scene leaves nothing on the table rather
+than promoting a sibling — switching the room to a different encounter unasked
+is worse than an empty board, and the switcher is right there. Copying a scene
+copies its fog mask as well as its layout; a duplicate of a half-explored
+dungeon that arrived fully concealed would not be a copy of it.

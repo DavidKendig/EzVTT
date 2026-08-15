@@ -22,6 +22,7 @@ const ui = {
   status: el("connection-status"),
   statusDot: el("connection-dot"),
   library: el("map-library"),
+  sceneList: el("scene-list"),
   empty: el("board-empty"),
   dropzone: el("dropzone"),
   fileInput: el("file-input"),
@@ -63,6 +64,8 @@ const ui = {
 };
 
 let activeMap = null;
+let activeScene = null;
+let scenes = [];
 // Set while the GM is dragging a slider. Echoes of our own change come back
 // over the socket; applying them to the input would fight the drag.
 let draggingControl = false;
@@ -81,6 +84,7 @@ function toast(message, kind = "info") {
 
 function applyState(state) {
   activeMap = state.map || null;
+  activeScene = state.scene || null;
 
   board.setMap(activeMap);
   board.setTokens(state.tokens || []);
@@ -91,8 +95,15 @@ function applyState(state) {
   updateFogStatus();
 
   if (activeMap) {
-    ui.mapName.textContent = activeMap.name;
-    ui.mapMeta.textContent = `${activeMap.width_px} x ${activeMap.height_px} px`;
+    // The scene is what the GM named, so it is what the bar says. The map is
+    // named alongside it only when the two differ, which is when there are
+    // several scenes over one piece of artwork.
+    const sceneName = activeScene?.name;
+    ui.mapName.textContent = sceneName || activeMap.name;
+    const size = `${activeMap.width_px} x ${activeMap.height_px} px`;
+    ui.mapMeta.textContent = sceneName && sceneName !== activeMap.name
+      ? `${activeMap.name} · ${size}`
+      : size;
     syncGridInputs(activeMap.grid);
   } else {
     ui.mapName.textContent = "No map on the table";
@@ -100,6 +111,7 @@ function applyState(state) {
   }
 
   if (state.library) renderLibrary(state.library, activeMap?.id);
+  if (state.scenes) renderScenes(state.scenes);
   syncTokenPanel();
 }
 
@@ -166,6 +178,137 @@ function renderLibrary(maps, activeId) {
     ui.library.append(item);
   }
 }
+
+// ----------------------------------------------------------------- scenes --
+
+function renderScenes(list) {
+  scenes = list;
+  ui.sceneList.replaceChildren();
+
+  if (list.length === 0) {
+    const hint = document.createElement("p");
+    hint.className = "card__hint";
+    hint.textContent = "Scenes appear here as soon as you add a map.";
+    ui.sceneList.append(hint);
+    return;
+  }
+
+  for (const scene of list) {
+    const item = document.createElement("div");
+    item.className =
+      "map-tile map-tile--scene" + (scene.active ? " map-tile--active" : "");
+
+    let thumb;
+    if (scene.thumb_url) {
+      thumb = document.createElement("img");
+      thumb.src = scene.thumb_url;
+      thumb.alt = "";
+      thumb.loading = "lazy";
+    } else {
+      thumb = document.createElement("div");
+    }
+    thumb.className = "map-tile__thumb";
+
+    const name = document.createElement("span");
+    name.className = "map-tile__name";
+    // textContent throughout: scene names are typed by the GM.
+    name.textContent = scene.name;
+
+    const meta = document.createElement("span");
+    meta.className = "map-tile__meta";
+    const count = scene.token_count === 1 ? "1 token" : `${scene.token_count} tokens`;
+    meta.textContent = `${scene.map_name || "No map"} · ${count}`;
+
+    const actions = document.createElement("div");
+    actions.className = "map-tile__actions";
+    actions.append(
+      sceneButton("Rename", () => renameScene(scene)),
+      sceneButton("Copy", () => duplicateScene(scene)),
+      sceneButton("Delete", () => deleteScene(scene), "btn--danger"),
+    );
+
+    item.append(thumb, name, meta, actions);
+    item.addEventListener("click", () => {
+      if (!scene.active) socket.send("scene.activate", { scene_id: scene.id });
+    });
+    ui.sceneList.append(item);
+  }
+}
+
+function sceneButton(label, onClick, extra = "") {
+  const button = document.createElement("button");
+  button.className = `btn btn--ghost btn--sm ${extra}`.trim();
+  button.type = "button";
+  button.textContent = label;
+  button.addEventListener("click", (event) => {
+    event.stopPropagation();          // the tile itself switches scenes
+    onClick();
+  });
+  return button;
+}
+
+async function sceneRequest(url, options, failure) {
+  const response = await fetch(url, options);
+  if (response.ok) return response.json();
+
+  const data = await response.json().catch(() => ({}));
+  toast(data.error || failure, "error");
+  return null;
+}
+
+/* A new scene is deliberately NOT activated. Adding one mid-session is prep;
+ * putting it in front of the table is the click on the scene itself. */
+async function newScene() {
+  if (!activeMap) {
+    toast("Put a map on the table first.", "error");
+    return;
+  }
+
+  const existing = scenes.filter((s) => s.map_id === activeMap.id).length;
+  const name = prompt("Name the new scene", `${activeMap.name} ${existing + 1}`);
+  if (name === null || name.trim() === "") return;
+
+  const created = await sceneRequest("/api/scenes", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ map_id: activeMap.id, name }),
+  }, "Could not create that scene.");
+
+  if (created) toast(`${created.scene.name} is ready. Click it to switch.`, "success");
+}
+
+async function duplicateScene(scene) {
+  const copy = await sceneRequest(
+    `/api/scenes/${scene.id}/duplicate`, { method: "POST" },
+    "Could not copy that scene.",
+  );
+  if (copy) toast(`${copy.scene.name} created with the same layout.`, "success");
+}
+
+async function renameScene(scene) {
+  const name = prompt("Rename scene", scene.name);
+  if (name === null || name.trim() === "" || name === scene.name) return;
+
+  await sceneRequest(`/api/scenes/${scene.id}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ name }),
+  }, "Rename failed.");
+}
+
+async function deleteScene(scene) {
+  const warning = scene.active
+    ? `Delete "${scene.name}"? It is on the table now, and the board will go empty.`
+    : `Delete "${scene.name}"? Its tokens and fog go with it. The map stays.`;
+  if (!confirm(warning)) return;
+
+  const gone = await sceneRequest(
+    `/api/scenes/${scene.id}`, { method: "DELETE" }, "Delete failed.",
+  );
+  if (gone) toast(`${scene.name} deleted.`);
+}
+
+el("scene-new").addEventListener("click", newScene);
 
 // ----------------------------------------------------------------- upload --
 

@@ -368,11 +368,21 @@ async def _set_grid(hub: Hub, connection: Connection, payload: dict[str, Any]) -
 
 
 async def _activate_scene(hub: Hub, connection: Connection, payload: dict[str, Any]) -> None:
-    map_id = payload.get("map_id")
-    if not isinstance(map_id, int):
-        raise ValueError("map_id is required.")
+    """Put a scene on the table.
 
-    scene_id = state.scene_for_map(map_id)
+    Takes a ``scene_id`` from the scene list, or a ``map_id`` from the map
+    library -- clicking a map means "whichever of its scenes I was last
+    running", which is what ``scene_for_map`` resolves.
+    """
+    scene_id = payload.get("scene_id")
+    if scene_id is None:
+        map_id = payload.get("map_id")
+        if not isinstance(map_id, int):
+            raise ValueError("scene_id or map_id is required.")
+        scene_id = state.scene_for_map(map_id)
+    elif not isinstance(scene_id, int):
+        raise ValueError("scene_id must be a number.")
+
     if not state.activate_scene(scene_id):
         raise ValueError("That scene no longer exists.")
 

@@ -27,6 +27,7 @@ from .routes import assets as asset_routes
 from .routes import maps as maps_routes
 from .routes import media_files
 from .routes import network as network_routes
+from .routes import scenes as scene_routes
 from .routes import wiki as wiki_routes
 
 log = logging.getLogger("ezvtt")
@@ -156,6 +157,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(account_routes.router)
     app.include_router(admin_routes.router)
     app.include_router(maps_routes.router)
+    app.include_router(scene_routes.router)
     app.include_router(asset_routes.router)
     app.include_router(network_routes.router)
     app.include_router(wiki_routes.router)

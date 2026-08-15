@@ -181,11 +181,62 @@ def active_scene() -> dict[str, Any] | None:
     return {"id": row["id"], "name": row["name"], "map_id": row["map_id"]}
 
 
-def create_scene(map_id: int, name: str, activate: bool = False) -> int:
+def scene_to_dict(row) -> dict[str, Any]:
+    return {
+        "id": row["id"],
+        "map_id": row["map_id"],
+        "name": row["name"],
+        "active": bool(row["is_active"]),
+        "map_name": row["map_name"],
+        "thumb_url": f"/media/thumbs/maps/{row['filename']}" if row["filename"] else None,
+        "token_count": row["token_count"],
+    }
+
+
+def list_scenes() -> list[dict[str, Any]]:
+    """Every prepped scene. GM-only; see ``snapshot``.
+
+    Ordered to match ``list_maps`` so the two sidebar panels agree with each
+    other, with a map's own scenes in the order they were created.
+    """
+    rows = db.connect().execute(
+        """
+        SELECT s.id, s.map_id, s.name, s.is_active,
+               m.name AS map_name, m.filename,
+               (SELECT COUNT(*) FROM tokens t WHERE t.scene_id = s.id) AS token_count
+        FROM scenes s LEFT JOIN maps m ON m.id = s.map_id
+        ORDER BY m.created_at DESC, s.map_id DESC, s.id
+        """
+    ).fetchall()
+    return [scene_to_dict(row) for row in rows]
+
+
+def get_scene(scene_id: int) -> dict[str, Any] | None:
+    row = db.connect().execute(
+        """
+        SELECT s.id, s.map_id, s.name, s.is_active,
+               m.name AS map_name, m.filename,
+               (SELECT COUNT(*) FROM tokens t WHERE t.scene_id = s.id) AS token_count
+        FROM scenes s LEFT JOIN maps m ON m.id = s.map_id
+        WHERE s.id = ?
+        """,
+        (scene_id,),
+    ).fetchone()
+    return scene_to_dict(row) if row else None
+
+
+def create_scene(map_id: int | None, name: str, activate: bool = False) -> int:
+    name = name.strip()[:120] or "Scene"
+
     conn = db.connect()
+    if map_id is not None and conn.execute(
+        "SELECT 1 FROM maps WHERE id = ?", (map_id,)
+    ).fetchone() is None:
+        raise ValueError("That map no longer exists.")
+
     cursor = conn.execute(
         "INSERT INTO scenes (map_id, name, is_active) VALUES (?, ?, 0)",
-        (map_id, name[:120]),
+        (map_id, name),
     )
     scene_id = cursor.lastrowid
     conn.commit()
@@ -193,6 +244,76 @@ def create_scene(map_id: int, name: str, activate: bool = False) -> int:
     if activate:
         activate_scene(scene_id)
     return scene_id
+
+
+def rename_scene(scene_id: int, name: str) -> bool:
+    name = name.strip()[:120]
+    if not name:
+        raise ValueError("A scene needs a name.")
+
+    conn = db.connect()
+    cursor = conn.execute("UPDATE scenes SET name = ? WHERE id = ?", (name, scene_id))
+    conn.commit()
+    return cursor.rowcount > 0
+
+
+def duplicate_scene(scene_id: int, name: str | None = None) -> int | None:
+    """Copy a scene's layout and fog onto a new scene of the same map.
+
+    "The same room, an hour later" is the common second scene: the furniture is
+    already placed and the corridor already revealed, and only the monsters
+    differ. Copying the fog matters as much as copying the tokens -- a duplicate
+    of a half-explored dungeon that arrives fully concealed is a different scene.
+
+    One transaction, so a copy that fails part-way leaves no scene holding half
+    a layout.
+    """
+    with db.transaction() as conn:
+        source = conn.execute(
+            "SELECT map_id, name FROM scenes WHERE id = ?", (scene_id,)
+        ).fetchone()
+        if source is None:
+            return None
+
+        copy_name = (name or f"{source['name']} copy").strip()[:120] or "Scene"
+        new_id = conn.execute(
+            "INSERT INTO scenes (map_id, name, is_active) VALUES (?, ?, 0)",
+            (source["map_id"], copy_name),
+        ).lastrowid
+
+        conn.execute(
+            """
+            INSERT INTO tokens (scene_id, asset_id, x, y, grid_w, grid_h, rotation,
+                                z, layer, label, owner_user_id, is_hidden, is_locked)
+            SELECT ?, asset_id, x, y, grid_w, grid_h, rotation,
+                   z, layer, label, owner_user_id, is_hidden, is_locked
+            FROM tokens WHERE scene_id = ?
+            """,
+            (new_id, scene_id),
+        )
+        conn.execute(
+            """
+            INSERT INTO fog (scene_id, cols, rows, revealed_rle)
+            SELECT ?, cols, rows, revealed_rle FROM fog WHERE scene_id = ?
+            """,
+            (new_id, scene_id),
+        )
+
+    return new_id
+
+
+def delete_scene(scene_id: int) -> bool:
+    """Delete a scene. Its tokens and fog cascade.
+
+    Deleting the scene that is on the table leaves nothing active rather than
+    guessing a replacement -- the GM asked to remove what the room is looking
+    at, and switching them to some other encounter unasked would be worse than
+    an empty board.
+    """
+    conn = db.connect()
+    cursor = conn.execute("DELETE FROM scenes WHERE id = ?", (scene_id,))
+    conn.commit()
+    return cursor.rowcount > 0
 
 
 def activate_scene(scene_id: int) -> bool:
@@ -207,19 +328,43 @@ def activate_scene(scene_id: int) -> bool:
         if exists is None:
             return False
         conn.execute("UPDATE scenes SET is_active = 0 WHERE is_active = 1")
-        conn.execute("UPDATE scenes SET is_active = 1 WHERE id = ?", (scene_id,))
+        # A counter, not a clock: two switches a moment apart record the same
+        # timestamp on a coarse platform clock, and the tie then breaks the wrong
+        # way when the GM comes back to this map. See 003_scenes.sql.
+        latest = conn.execute(
+            "SELECT COALESCE(MAX(last_active_seq), 0) AS seq FROM scenes"
+        ).fetchone()["seq"]
+        conn.execute(
+            "UPDATE scenes SET is_active = 1, last_active_seq = ? WHERE id = ?",
+            (latest + 1, scene_id),
+        )
     return True
 
 
-def scene_for_map(map_id: int) -> int:
-    """The scene belonging to a map, created on demand.
+def scene_ids_for_map(map_id: int) -> list[int]:
+    rows = db.connect().execute(
+        "SELECT id FROM scenes WHERE map_id = ?", (map_id,)
+    ).fetchall()
+    return [row["id"] for row in rows]
 
-    Phase 1 keeps this one-to-one: uploading a map puts it on the table without
-    the GM having to know what a scene is. Phase 8 exposes several per map.
+
+def scene_for_map(map_id: int) -> int:
+    """The scene to put on the table for a map, created on demand.
+
+    Uploading a map puts it on the table without the GM having to know what a
+    scene is, so the first one is made here rather than asked for. With several
+    scenes over one map, clicking that map returns to the one last run: picking
+    the oldest instead would silently take a GM back to the encounter they
+    finished two sessions ago.
     """
     conn = db.connect()
     row = conn.execute(
-        "SELECT id FROM scenes WHERE map_id = ? ORDER BY id LIMIT 1", (map_id,)
+        """
+        SELECT id FROM scenes WHERE map_id = ?
+        ORDER BY last_active_seq DESC, id
+        LIMIT 1
+        """,
+        (map_id,),
     ).fetchone()
     if row is not None:
         return row["id"]
@@ -482,7 +627,11 @@ def snapshot(for_gm: bool) -> dict[str, Any]:
     active_map = get_map(scene["map_id"]) if scene and scene["map_id"] else None
 
     state: dict[str, Any] = {
-        "scene": scene,
+        # A scene *name* is GM prep. "Ambush at the bridge" in a payload the
+        # player's browser can read gives away the evening, so they are told
+        # which scene they are on and nothing else about it.
+        "scene": scene if for_gm or scene is None
+                 else {"id": scene["id"], "map_id": scene["map_id"]},
         "map": active_map,
         "campaign_name": db.get_setting("campaign_name", "A New Campaign"),
     }
@@ -491,6 +640,7 @@ def snapshot(for_gm: bool) -> dict[str, Any]:
         state["tokens"] = []
         if for_gm:
             state["library"] = list_maps()
+            state["scenes"] = list_scenes()
         return state
 
     fog_state = fog_module.get(scene["id"]) if active_map else None
@@ -506,9 +656,10 @@ def snapshot(for_gm: bool) -> dict[str, Any]:
             "version": fog_state["version"],
         } if fog_state else None
         state["tokens"] = tokens
-        # The map library is a GM tool; players have no use for it and no
-        # business seeing maps that are not on the table.
+        # The map library and the scene list are GM tools; players have no use
+        # for them and no business seeing what is not on the table.
         state["library"] = list_maps()
+        state["scenes"] = list_scenes()
         return state
 
     if active_map is not None and fog_state is None:

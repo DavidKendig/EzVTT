@@ -11,7 +11,7 @@ import logging
 from fastapi import APIRouter, Depends, File, Request, UploadFile
 from fastapi.responses import JSONResponse
 
-from .. import config, media, state
+from .. import config, fog, media, state
 from ..deps import require_gm
 from ..hub import hub
 
@@ -85,9 +85,16 @@ async def update_map(request: Request, map_id: int):
 
 @router.delete("/{map_id}")
 async def delete_map(request: Request, map_id: int):
+    # Collected before the delete: the scenes cascade with the map, and their
+    # composites on disk have no row left to find them by afterwards.
+    scene_ids = state.scene_ids_for_map(map_id)
+
     filename = state.delete_map(map_id)
     if filename is None:
         return JSONResponse({"error": "No such map."}, status_code=404)
+
+    for scene_id in scene_ids:
+        fog.clear_composites(scene_id)
 
     # The database row is the source of truth, so the file is removed after it.
     # A leftover file wastes disk; a leftover row would show a broken map.

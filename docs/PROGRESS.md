@@ -10,14 +10,14 @@ without reading the codebase.
 
 ## Start here
 
-**State at 2026-08-13.** Phases 0–7 done. Phases 8–10 remain.
+**State at 2026-08-14.** Phases 0–7 done. Phase 8 started: scenes ship.
 
 | | |
 |---|---|
 | Branch | `rewrite/fastapi-vtt`, everything committed and pushed |
-| PR | [#1](https://github.com/DavidKendig/EzVTT/pull/1) — 3 commits, open, not merged |
+| PR | [#1](https://github.com/DavidKendig/EzVTT/pull/1) — open, not merged |
 | `main` | still the original Java/Django prototype; the PR replaces it |
-| Tests | **450**, all passing |
+| Tests | **472**, all passing |
 | Lint | `ruff check .` clean |
 
 ```bash
@@ -31,9 +31,11 @@ without reading the codebase.
 footprints parsed from filenames · tokens on three layers · accounts with a
 forced first-run admin · fog that removes concealed pixels server-side · chat
 with server-rolled dice and private rolls · join-by-QR · a campaign wiki that
-shares nothing until you tick a folder.
+shares nothing until you tick a folder · **several scenes per map, switched with
+one click.**
 
-**Next:** Phase 8, quality of life — see the bottom of this file.
+**Next:** Phase 8 continues — the initiative tracker. See the bottom of this
+file.
 
 **Two things a cold session should not "fix":**
 
@@ -43,6 +45,72 @@ shares nothing until you tick a folder.
 2. `scripts/stop.ps1` sends a console control event from a child process rather
    than calling `taskkill`. Windows has no SIGTERM for console apps, and doing
    the console dance inline breaks the calling shell.
+
+---
+
+## Session 9 — 2026-08-14 · Phase 8 begins · **scenes**
+
+**Where the project stands:** a GM can prep several encounters over the same
+battlemap and switch the table between them with one click. Phase 8's first and
+most-wanted item is done; the initiative tracker is next.
+
+### Shipped
+
+- **`003_scenes.sql`** — `scenes.last_active_seq`
+- **`state.py`** — `list_scenes` · `get_scene` · `rename_scene` ·
+  `duplicate_scene` · `delete_scene` · `scene_ids_for_map`; `scene_for_map` now
+  resolves to the scene *last run* over that map
+- **`ezvtt/routes/scenes.py`** — `/api/scenes` create · rename · duplicate ·
+  delete, GM-only at the router (ADR-010)
+- Hub `scene.activate` takes a `scene_id` as well as a `map_id`
+- **Scenes panel** on the GM screen: every scene with its map, its token count,
+  and Rename / Copy / Delete. The board bar names the *scene*, adding the map
+  name beside it only when the two differ
+- Deleting a map now clears its scenes' fog composites off disk, which the old
+  one-scene-per-map path had been leaking
+
+### The three decisions worth remembering
+
+Written up as **ADR-012**; the short version:
+
+1. **Clicking a map returns to the scene last run**, not the map's oldest scene.
+2. **A new or copied scene is not activated.** Adding one is prep; putting it in
+   front of the table is the click on the scene itself.
+3. **A scene name never reaches a player.** Their payload carries the scene id
+   and nothing else about it — names are where prep gets written down.
+
+### A bug the test found and reasoning would not have
+
+`last_active_at` was first a `datetime('now')` timestamp. Two activations a
+moment apart recorded **the same value** — second resolution, and Windows'
+clock granularity defeats the sub-second formats too — so the tie broke by id
+and sent the GM back to the wrong scene. That is the exact failure the column
+existed to prevent, and it passed review by inspection. It is now
+`last_active_seq`, `MAX(seq) + 1` inside the activating transaction.
+
+### Verified, not just written
+
+**Against a running server**, on a *copy* of `data/` so the real campaign was
+never touched (`EZVTT_DATA_ROOT` pointing at a scratch tree):
+
+- Migration 003 applied cleanly to the existing 855-thumbnail database, with the
+  one pre-existing scene preserved
+- **Copy** produced a second scene with all 16 tokens and a byte-identical fog
+  mask (109 of 1258 cells revealed on both), and did **not** take the table
+- After switching to the copy, clearing its tokens and revealing all its fog,
+  the original still held 16 tokens and 109 revealed cells — **the copy is
+  genuinely independent**
+- Clicking the map in the library came back to the scene last run, not the first
+- A new scene opens empty and **0% revealed**; renaming updates the board bar
+  live; deleting the active scene empties the board and leaves the switcher up
+- **Three live sockets during a switch:** display and GM received the scene with
+  its name and the original map URL; the player received `{'id': 2, 'map_id': 1}`
+  with **no name**, no `scenes` key, and the composite URL for the new scene
+- `/api/scenes` refuses anonymous **401** and a signed-in player **403** on all
+  five endpoints
+
+**472 tests, ruff clean** — `tests/test_scenes.py` adds 22, including the
+independence of a copy and both spoiler rules.
 
 ---
 
@@ -320,10 +388,9 @@ the fail-closed path finding 3 added.
 Everything a GM reaches for mid-session that is currently missing. Roughly in
 order of how often it would be wanted:
 
-1. **Scenes** — prep several encounters and switch with one click. The `scenes`
-   table and `scene_for_map` already exist; what is missing is more than one
-   scene per map and a switcher.
-2. **Initiative tracker** — the `initiative` table exists and is unused.
+1. ~~**Scenes**~~ — done, Session 9.
+2. **Initiative tracker** — the `initiative` table exists and is unused. It is
+   already keyed by `scene_id`, so it follows a scene switch for free.
 3. **Ruler in grid units, and AoE templates** (cone, circle, line).
 4. **Ping** — alt-click a spot and everyone sees it. Small, and the thing that
    most reduces "no, the *other* door".

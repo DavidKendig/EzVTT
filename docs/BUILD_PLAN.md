@@ -161,9 +161,11 @@ Scaffolding, licensing, and the skeleton everything else hangs off.
 
 ---
 
-## Phase 8 — Quality of life `[ ]`
+## Phase 8 — Quality of life `[~]`
 
-- [ ] Scenes — prep several encounters, switch with one click
+- [x] Scenes — prep several encounters, switch with one click
+      (several per map, rename, copy layout *and* fog, delete; clicking a map
+      returns to the scene last run; scene names never reach players)
 - [ ] Initiative tracker
 - [ ] Ruler in grid units; AoE templates (cone, circle, line)
 - [ ] Alt-click **ping** visible to everyone
