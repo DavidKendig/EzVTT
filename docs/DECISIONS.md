@@ -393,3 +393,49 @@ Ending a combat keeps the order and only zeroes the round; the party is still
 the party after the fight, and retyping four names is not a feature. Clicking a
 row hands the turn straight to it, because "no, we skipped Anya" is the most
 common correction at a table and should not cost four clicks and a round.
+
+---
+
+## ADR-014 — A template is table state; a measurement is not
+
+**Date:** 2026-08-15 · **Status:** Accepted
+
+**Decision.** Area-of-effect templates -- circle, cone, line -- are stored per
+scene and broadcast to everyone. The ruler is drawn entirely on the screen of
+whoever is dragging it and never touches the server. Anyone signed in may
+measure; only the GM may place a template.
+
+**Why the split.** Dropping a fireball is an announcement: the point is that
+the table sees whose square it covers, and the answer has to be the same on all
+three screens. Measuring is a question the person asking has -- "can I reach
+him from here?" -- and it is asked several times a turn, by everyone, most of
+the answers being discarded immediately. Sending a message per animation frame
+so that five other people can watch a line waggle would cost the socket a great
+deal for information nobody wants. So: measure freely and privately; drop a
+template when the table needs to see it. The GM screen says exactly that, in
+those words, under the tools.
+
+**Why players may measure but not place.** A ruler changes nothing, so it does
+not need the rights that changing something does -- and a player working out
+their own move without asking is the whole reason to give them a board at all.
+A template is shared, persistent state; letting five people write to it invites
+a tidying problem the GM does not need mid-combat. Player-placed templates are
+deferred, not refused.
+
+**Geometry.** Distance is Chebyshev -- a diagonal costs the same as a straight
+step -- which is the 5e rule and the one the table will be counting with unless
+they have deliberately chosen otherwise. Euclidean would read as more precise
+while disagreeing with how the group actually moves. A cone is as wide at its
+far end as it is long, putting its edges at `atan(0.5)` either side of where it
+points; every other cone dimension follows from that one number. Squares are
+shown before feet, because squares stay true on a map drawn to some other scale.
+
+**Consequences.** `Board#outline` is read by both the drawing and the
+hit-testing, so a template can never be tested against an outline other than the
+one on screen. Geometry is stored in grid units, like token positions, so
+adjusting the grid does not scatter what is already placed. Templates obey the
+same disclosure rules as tokens: a concealed one -- a glyph of warding drawn
+where it lies -- is absent from a player's payload, and so is one drawn entirely
+over map they have not revealed, since a circle over unexplored ground is a map
+of the unexplored part. The colour is validated as hex before it is stored,
+because it reaches a canvas fill style on every client.

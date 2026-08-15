@@ -113,6 +113,34 @@ class GridSpec:
         )
 
 
+# How far one square is, for the ruler's second figure. Five feet is the
+# assumption of every edition this program is likely to sit in front of; a map
+# drawn to some other scale still measures correctly in squares, which is the
+# figure shown first.
+FEET_PER_SQUARE = 5.0
+
+
+def distance_squares(x0: float, y0: float, x1: float, y1: float) -> float:
+    """Distance in grid squares, counting a diagonal as one square.
+
+    Chebyshev, which is the 5e rule and the one a table will be using unless
+    they have deliberately chosen otherwise. Euclidean would read as more
+    precise while disagreeing with how the group actually counts movement, and
+    the alternating 5-10-5 of older editions is a house rule this does not try
+    to guess at.
+
+    >>> distance_squares(0, 0, 3, 0)
+    3.0
+    >>> distance_squares(0, 0, 3, 3)   # a diagonal costs the same
+    3.0
+    """
+    return float(max(abs(x1 - x0), abs(y1 - y0)))
+
+
+def distance_feet(squares: float) -> float:
+    return squares * FEET_PER_SQUARE
+
+
 def fit_grid(width_px: float, height_px: float, cols: int, rows: int) -> float:
     """Grid size that divides an image into roughly cols x rows squares.
 

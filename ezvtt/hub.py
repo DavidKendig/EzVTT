@@ -272,6 +272,33 @@ class Hub:
             (c, {"type": "state", "state": player_state}) for c in players
         ])
 
+    async def broadcast_templates(self, scene_id: int) -> None:
+        """Push the area-of-effect templates on a scene.
+
+        Two audiences again: a concealed template is absent from the players'
+        list, and so is one drawn entirely over map they have not revealed. The
+        whole list goes rather than a delta -- a scene holds a handful of these,
+        they change only when the GM drops or clears one, and a list is one
+        fewer thing that can drift out of step.
+        """
+        from . import aoe, fog
+
+        async with self._lock:
+            targets = list(self.connections)
+        if not targets:
+            return
+
+        gm_view = aoe.list_for(scene_id, include_hidden=True)
+        player_view = aoe.visible_in_fog(
+            aoe.list_for(scene_id, include_hidden=False), fog.get(scene_id)
+        )
+
+        await self.deliver([
+            (c, {"type": "templates",
+                 "templates": gm_view if c.is_gm else player_view})
+            for c in targets
+        ])
+
     async def broadcast_initiative(self, scene_id: int) -> None:
         """Push the turn order.
 
@@ -546,6 +573,73 @@ async def _fog_all(hub: Hub, connection: Connection, payload: dict[str, Any]) ->
 
 
 # --------------------------------------------------------------------------- #
+# Template intents
+# --------------------------------------------------------------------------- #
+
+async def _template_place(hub: Hub, connection: Connection, payload: dict[str, Any]) -> None:
+    """Drop a circle, cone, or line on the table.
+
+    Sent once, on release, rather than on every frame of the drag: the preview
+    the GM is dragging is local, and only the shape they settled on is table
+    state. See ADR-014.
+    """
+    from . import aoe
+
+    scene_id = _require_scene()
+    aoe.place(
+        scene_id,
+        str(payload.get("kind", "circle")),
+        float(payload.get("x", 0)),
+        float(payload.get("y", 0)),
+        float(payload.get("size", 1)),
+        angle=float(payload.get("angle", 0)),
+        width=float(payload.get("width", 1)),
+        color=str(payload.get("color", aoe.DEFAULT_COLOR)),
+        label=payload.get("label"),
+        hidden=bool(payload.get("hidden", False)),
+    )
+    await hub.broadcast_templates(scene_id)
+
+
+async def _template_update(hub: Hub, connection: Connection, payload: dict[str, Any]) -> None:
+    from . import aoe
+
+    template_id = payload.get("template_id")
+    if not isinstance(template_id, int):
+        raise ValueError("template_id is required.")
+
+    scene_id = aoe.scene_of(template_id)
+    if scene_id is None:
+        raise ValueError("That template is no longer on the table.")
+
+    changes = {k: v for k, v in payload.items() if k != "template_id"}
+    aoe.update(template_id, **changes)
+    await hub.broadcast_templates(scene_id)
+
+
+async def _template_remove(hub: Hub, connection: Connection, payload: dict[str, Any]) -> None:
+    from . import aoe
+
+    template_id = payload.get("template_id")
+    if not isinstance(template_id, int):
+        raise ValueError("template_id is required.")
+
+    scene_id = aoe.scene_of(template_id)
+    if scene_id is None or not aoe.remove(template_id):
+        raise ValueError("That template is no longer on the table.")
+
+    await hub.broadcast_templates(scene_id)
+
+
+async def _templates_clear(hub: Hub, connection: Connection, payload: dict[str, Any]) -> None:
+    from . import aoe
+
+    scene_id = _require_scene()
+    aoe.clear(scene_id)
+    await hub.broadcast_templates(scene_id)
+
+
+# --------------------------------------------------------------------------- #
 # Initiative intents
 # --------------------------------------------------------------------------- #
 
@@ -739,6 +833,10 @@ _GM_INTENTS = {
     "fog.paint": _fog_paint,
     "fog.rect": _fog_rect,
     "fog.all": _fog_all,
+    "template.place": _template_place,
+    "template.update": _template_update,
+    "template.remove": _template_remove,
+    "templates.clear": _templates_clear,
     "initiative.add": _initiative_add,
     "initiative.update": _initiative_update,
     "initiative.remove": _initiative_remove,

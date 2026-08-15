@@ -65,6 +65,15 @@ const ui = {
   tokenLocked: el("token-locked"),
   tokenDelete: el("token-delete"),
   tokenCount: el("token-count"),
+  templatePanel: el("template-panel"),
+  toolCircle: el("tool-circle"),
+  toolCone: el("tool-cone"),
+  toolLine: el("tool-line"),
+  templateWidth: el("template-width"),
+  templateWidthOut: el("template-width-out"),
+  templateColour: el("template-colour"),
+  templateDelete: el("template-delete"),
+  templateHide: el("template-hide"),
 };
 
 let activeMap = null;
@@ -92,10 +101,13 @@ function applyState(state) {
 
   board.setMap(activeMap);
   board.setTokens(state.tokens || []);
+  board.setTemplates(state.templates || []);
   board.setFog(state.fog || null);
   ui.empty.hidden = Boolean(activeMap);
   ui.gridPanel.hidden = !activeMap;
   ui.fogPanel.hidden = !activeMap;
+  ui.templatePanel.hidden = !activeMap;
+  syncTemplatePanel();
   updateFogStatus();
 
   if (activeMap) {
@@ -414,6 +426,23 @@ document.addEventListener("keydown", (event) => {
   if (!activeMap || event.target.matches("input, textarea, select")) return;
 
   const selected = board.selected;
+  const template = board.selectedTemplate;
+
+  if ((event.key === "Delete" || event.key === "Backspace") && !selected && template) {
+    event.preventDefault();
+    socket.send("template.remove", { template_id: template.id });
+    return;
+  }
+
+  // Escape puts down whatever is in hand: the measurement, then the selection.
+  if (event.key === "Escape" && (template || !selected)) {
+    board.clearRuler();
+    if (template) {
+      event.preventDefault();
+      board.selectTemplate(null);
+      return;
+    }
+  }
 
   // Delete removes the selected token.
   if ((event.key === "Delete" || event.key === "Backspace") && selected) {
@@ -606,13 +635,76 @@ el("clear-tokens").addEventListener("click", () => {
   }
 });
 
+// -------------------------------------------------------------- templates --
+
+function syncTemplatePanel() {
+  const template = board.selectedTemplate;
+  ui.templateDelete.hidden = !template;
+  ui.templateHide.hidden = !template;
+  if (template) {
+    // A glyph of warding can be drawn where it lies and then taken out of the
+    // players' view until someone steps on it.
+    ui.templateHide.textContent = template.hidden ? "Reveal" : "Hide";
+    ui.templateHide.title = template.hidden
+      ? "Players cannot see this template; show it to them"
+      : "Keep this template on your screen only";
+  }
+}
+
+board.element.addEventListener("board:templateselect", syncTemplatePanel);
+
+/* Sent once, on release. Every frame of the drag was a local preview of a
+ * decision the GM had not made yet -- see ADR-014. */
+board.element.addEventListener("board:templateplace", (e) => {
+  socket.send("template.place", { ...e.detail, color: ui.templateColour.value });
+});
+
+ui.toolCircle.addEventListener("click", () => setTool("circle"));
+ui.toolCone.addEventListener("click", () => setTool("cone"));
+ui.toolLine.addEventListener("click", () => setTool("line"));
+
+ui.templateWidth.addEventListener("input", () => {
+  board.templateWidth = Number(ui.templateWidth.value);
+  ui.templateWidthOut.textContent = `${ui.templateWidth.value} sq`;
+});
+
+ui.templateColour.addEventListener("input", () => {
+  board.templateColor = ui.templateColour.value;
+});
+
+ui.templateHide.addEventListener("click", () => {
+  const template = board.selectedTemplate;
+  if (template) {
+    socket.send("template.update", {
+      template_id: template.id, hidden: !template.hidden,
+    });
+  }
+});
+
+ui.templateDelete.addEventListener("click", () => {
+  const template = board.selectedTemplate;
+  if (template) socket.send("template.remove", { template_id: template.id });
+});
+
+el("templates-clear").addEventListener("click", () => {
+  if (board.templates.length === 0) return;
+  if (confirm(`Remove all ${board.templates.length} templates from this scene?`)) {
+    socket.send("templates.clear");
+  }
+});
+
 // -------------------------------------------------------------------- fog --
 
 function setTool(name) {
   board.tool = name;
-  ui.toolSelect.classList.toggle("btn--primary", name === "select");
-  ui.toolFog.classList.toggle("btn--primary", name === "fog");
-  if (name === "fog") syncTokenPanel();
+  for (const [button, tool] of [
+    [ui.toolSelect, "select"], [ui.toolFog, "fog"],
+    [ui.toolCircle, "circle"], [ui.toolCone, "cone"], [ui.toolLine, "line"],
+  ]) {
+    button.classList.toggle("btn--primary", name === tool);
+  }
+  syncTokenPanel();
+  syncTemplatePanel();
 }
 
 function updateFogStatus() {
@@ -672,6 +764,11 @@ initiativePanel.addEventListener("change", () => {
 socket.addEventListener("state", (e) => applyState(e.detail.state));
 
 socket.addEventListener("initiative", (e) => initiativePanel.apply(e.detail.initiative));
+
+socket.addEventListener("templates", (e) => {
+  board.setTemplates(e.detail.templates);
+  syncTemplatePanel();
+});
 
 socket.addEventListener("fog", (e) => {
   board.setFog({ cols: e.detail.cols, rows: e.detail.rows, cells: e.detail.cells });

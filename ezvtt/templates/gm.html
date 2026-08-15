@@ -142,6 +142,49 @@
     </p>
   </section>
 
+  <section class="sidebar__section" id="template-panel" hidden>
+    <h2 class="sidebar__title">Measure &amp; templates</h2>
+
+    <div class="row row--wrap" style="gap:4px">
+      <button class="btn btn--sm" id="tool-circle" type="button">Circle</button>
+      <button class="btn btn--sm" id="tool-cone" type="button">Cone</button>
+      <button class="btn btn--sm" id="tool-line" type="button">Line</button>
+    </div>
+
+    <div class="control">
+      <label class="control__label" for="template-width">
+        Line width <output class="control__value" id="template-width-out">1 sq</output>
+      </label>
+      <input class="control__range" type="range" id="template-width"
+             min="0.5" max="6" step="0.5" value="1">
+    </div>
+
+    <div class="control control--inline">
+      <label class="control__label" for="template-colour">Colour</label>
+      <input class="control__colour" type="color" id="template-colour" value="#d9a441">
+    </div>
+
+    <div class="row row--wrap" style="gap:4px">
+      <button class="btn btn--sm" id="template-hide" type="button" hidden>Hide</button>
+      <button class="btn btn--sm btn--danger" id="template-delete" type="button" hidden>
+        Delete template
+      </button>
+      <button class="btn btn--sm btn--ghost btn--danger" id="templates-clear" type="button">
+        Clear all
+      </button>
+    </div>
+
+    <p class="control__hint">
+      Drag from the centre of a circle, or from the caster outwards for a cone
+      or a line. Click one to select it; <kbd>Del</kbd> removes it. Hold
+      <kbd>Alt</kbd> to ignore the half-square steps.
+    </p>
+    <p class="control__hint">
+      <kbd>Shift</kbd>-drag anywhere measures in squares and feet, on your
+      screen only. Drop a template when the table needs to see it.
+    </p>
+  </section>
+
   <section class="sidebar__section" id="asset-panel">
     <h2 class="sidebar__title">
       Assets <span class="muted" data-asset-status></span>

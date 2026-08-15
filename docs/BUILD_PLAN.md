@@ -168,7 +168,8 @@ Scaffolding, licensing, and the skeleton everything else hangs off.
       returns to the scene last run; scene names never reach players)
 - [x] Initiative tracker — per scene, d20 rolled server-side, entries concealable,
       shown on the GM screen, the player view, and the projector
-- [ ] Ruler in grid units; AoE templates (cone, circle, line)
+- [x] Ruler in grid units; AoE templates (cone, circle, line) — the ruler is
+      local to whoever drags it, templates are shared table state
 - [ ] Alt-click **ping** visible to everyone
 - [ ] **Grid auto-detect** from the map image
 - [ ] Undo/redo for GM board edits

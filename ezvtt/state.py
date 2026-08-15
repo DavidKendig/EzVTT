@@ -131,7 +131,7 @@ def update_grid(map_id: int, **changes: Any) -> dict[str, Any] | None:
         color = str(changes["color"]).strip()
         # Only #rgb / #rrggbb reach the database; the value is interpolated into
         # a canvas stroke style on the client.
-        if not _is_hex_color(color):
+        if not is_hex_color(color):
             raise ValueError("Grid colour must be a hex value like #000000.")
         fields["grid_color"] = color
 
@@ -153,7 +153,7 @@ def update_grid(map_id: int, **changes: Any) -> dict[str, Any] | None:
     return get_map(map_id) if cursor.rowcount else None
 
 
-def _is_hex_color(value: str) -> bool:
+def is_hex_color(value: str) -> bool:
     if not value.startswith("#") or len(value) not in (4, 7):
         return False
     return all(c in "0123456789abcdefABCDEF" for c in value[1:])
@@ -638,12 +638,14 @@ def snapshot(for_gm: bool) -> dict[str, Any]:
 
     if scene is None:
         state["tokens"] = []
+        state["templates"] = []
         state["initiative"] = {"round": 0, "entries": [], "current_id": None}
         if for_gm:
             state["library"] = list_maps()
             state["scenes"] = list_scenes()
         return state
 
+    from . import aoe as aoe_module
     from . import initiative as initiative_module
 
     # Before the fail-closed branch below: the turn order is not map data, and a
@@ -652,6 +654,7 @@ def snapshot(for_gm: bool) -> dict[str, Any]:
 
     fog_state = fog_module.get(scene["id"]) if active_map else None
     tokens = list_tokens(scene["id"], include_hidden=for_gm)
+    templates = aoe_module.list_for(scene["id"], include_hidden=for_gm)
 
     if for_gm:
         # The GM gets the real image and the mask, and draws fog as a
@@ -663,6 +666,7 @@ def snapshot(for_gm: bool) -> dict[str, Any]:
             "version": fog_state["version"],
         } if fog_state else None
         state["tokens"] = tokens
+        state["templates"] = templates
         # The map library and the scene list are GM tools; players have no use
         # for them and no business seeing what is not on the table.
         state["library"] = list_maps()
@@ -681,6 +685,7 @@ def snapshot(for_gm: bool) -> dict[str, Any]:
         )
         state["map"] = None
         state["tokens"] = []
+        state["templates"] = []
         return state
 
     if fog_state is not None and active_map is not None:
@@ -697,6 +702,9 @@ def snapshot(for_gm: bool) -> dict[str, Any]:
                 fog_state, token["x"], token["y"], token["grid_w"], token["grid_h"]
             )
         ]
+        # A circle drawn over unexplored map is a map of the unexplored part.
+        templates = aoe_module.visible_in_fog(templates, fog_state)
 
     state["tokens"] = tokens
+    state["templates"] = templates
     return state

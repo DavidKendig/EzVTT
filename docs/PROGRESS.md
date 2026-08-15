@@ -10,15 +10,15 @@ without reading the codebase.
 
 ## Start here
 
-**State at 2026-08-14.** Phases 0–7 done. Phase 8 under way: scenes and the
-initiative tracker ship.
+**State at 2026-08-15.** Phases 0–7 done. Phase 8 under way: scenes, the
+initiative tracker, and measuring ship.
 
 | | |
 |---|---|
 | Branch | `rewrite/fastapi-vtt`, everything committed and pushed |
 | PR | [#1](https://github.com/DavidKendig/EzVTT/pull/1) — open, not merged |
 | `main` | still the original Java/Django prototype; the PR replaces it |
-| Tests | **508**, all passing |
+| Tests | **549**, all passing |
 | Lint | `ruff check .` clean |
 
 ```bash
@@ -33,9 +33,10 @@ footprints parsed from filenames · tokens on three layers · accounts with a
 forced first-run admin · fog that removes concealed pixels server-side · chat
 with server-rolled dice and private rolls · join-by-QR · a campaign wiki that
 shares nothing until you tick a folder · several scenes per map, switched with
-one click · **an initiative tracker on all three screens.**
+one click · an initiative tracker on all three screens · **a ruler, and
+fireballs the table can see.**
 
-**Next:** Phase 8 continues — the ruler and AoE templates. See the bottom of
+**Next:** Phase 8 continues — ping, then grid auto-detect. See the bottom of
 this file.
 
 **Two things a cold session should not "fix":**
@@ -46,6 +47,68 @@ this file.
 2. `scripts/stop.ps1` sends a console control event from a child process rather
    than calling `taskkill`. Windows has no SIGTERM for console apps, and doing
    the console dance inline breaks the calling shell.
+
+---
+
+## Session 11 — 2026-08-15 · Phase 8 · **the ruler and AoE templates**
+
+**Where the project stands:** "can I reach him from here?" is answered by
+Shift-dragging, and "who does the fireball catch?" by dropping a circle the
+whole table sees. Three of Phase 8's items are done; ping is next.
+
+### Shipped
+
+- **`005_templates.sql`** — `aoe_templates`, geometry in grid units. Named
+  `aoe_*` because `ezvtt/templates/` is the Jinja directory and a
+  `templates.py` beside it would be a trap for the next person
+- **`ezvtt/aoe.py`** — place, update, remove, clear, and the two disclosure
+  filters; every field validated rather than trusted
+- **`grid.distance_squares` / `distance_feet`** — Chebyshev, pinned by test
+- Four GM-only hub intents and `broadcast_templates`
+- **`board.js`**: templates drawn under the tokens, dragged out live, hit-tested
+  for selection; the ruler on every screen via **Shift-drag**
+- A *Measure & templates* panel on the GM screen: circle, cone, line, width,
+  colour, hide, delete, clear all
+
+### The rule it rests on
+
+**ADR-014: a template is table state; a measurement is not.** Dropping a
+fireball is an announcement and has to look the same on all three screens.
+Measuring is a question the asker has, asked several times a turn by everyone,
+and most answers are discarded within seconds — sending a message per animation
+frame so five other people can watch a line waggle would cost the socket a great
+deal for information nobody wants. So anyone signed in may measure, privately;
+only the GM places a template. The panel says exactly that, in those words.
+
+`Board#outline` is read by *both* the drawing and the hit-testing, so a template
+can never be tested against an outline other than the one on screen.
+
+### Verified, not just written
+
+Against a running server on a copy of `data/`, driving the real canvas:
+
+- Dragging with each tool placed a **circle r=7**, a **cone at 0°**, and a
+  **line at 91°**, sizes landing on the half-square steps
+- A fireball placed in a **revealed** area reached the player; the three
+  dragged over unexplored ground reached **none** of them. Hiding it removed it
+  from their list instantly and revealing put it back
+- **Ten geometry checks** through the real hit-tester: a point on the cone's
+  axis and near its far edge hit; beyond its spread, behind its apex, and past
+  its length all missed; the line hit down its length and missed beside and
+  past it
+- **The ruler draws and clears**: 0 marker pixels before the drag, 253 during,
+  211 after release — it stays up to be read — and 0 after Escape. Its label
+  read `38.2 sq · 191 ft`, matching an independently computed Chebyshev distance
+- A player socket sending `template.place`, `template.remove`, and
+  `templates.clear` was refused each time: *"Only the GM can do that."*
+
+**One thing the measuring caught in itself:** the first label read
+`38.2 sq · 190.8 ft`, because the feet were derived from the raw distance while
+the squares shown were rounded. Both figures now come from the same rounded
+number — inviting a GM to check the arithmetic and find it wrong is worse than
+showing one decimal fewer.
+
+**549 tests, ruff clean** — `tests/test_aoe.py` adds 33 and the ruler's maths 8.
 
 ---
 
@@ -461,9 +524,7 @@ order of how often it would be wanted:
 
 1. ~~**Scenes**~~ — done, Session 9.
 2. ~~**Initiative tracker**~~ — done, Session 10.
-3. **Ruler in grid units, and AoE templates** (cone, circle, line). Client-side
-   drawing over the board, but the *shared* templates a GM drops for the table
-   have to be server state like everything else.
+3. ~~**Ruler and AoE templates**~~ — done, Session 11.
 4. **Ping** — alt-click a spot and everyone sees it. Small, and the thing that
    most reduces "no, the *other* door".
 5. **Grid auto-detect** from the map image. The single biggest win for the

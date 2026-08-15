@@ -7,7 +7,14 @@ because the parser exists to read those exact filenames.
 import pytest
 
 from ezvtt import config
-from ezvtt.grid import GridSpec, display_name, fit_grid, parse_footprint
+from ezvtt.grid import (
+    GridSpec,
+    display_name,
+    distance_feet,
+    distance_squares,
+    fit_grid,
+    parse_footprint,
+)
 
 # --------------------------------------------------------------------------- #
 # Footprint parsing
@@ -128,3 +135,32 @@ def test_fit_grid_keeps_squares_square():
 def test_fit_grid_rejects_nonsense_divisions():
     with pytest.raises(ValueError):
         fit_grid(1000, 1000, 0, 10)
+
+
+# --------------------------------------------------------------------------- #
+# The ruler
+# --------------------------------------------------------------------------- #
+
+@pytest.mark.parametrize("x1, y1, expected", [
+    (3, 0, 3.0),      # straight
+    (0, 4, 4.0),
+    (3, 3, 3.0),      # a diagonal costs the same as a straight step
+    (3, 1, 3.0),      # and a knight's move costs the longer of the two
+    (-2, 0, 2.0),     # direction does not matter
+])
+def test_distance_counts_a_diagonal_as_one_square(x1, y1, expected):
+    """Chebyshev, which is the 5e rule and how the table counts movement."""
+    assert distance_squares(0, 0, x1, y1) == expected
+
+
+def test_distance_is_symmetric():
+    assert distance_squares(2, 7, 9, 3) == distance_squares(9, 3, 2, 7)
+
+
+def test_distance_of_a_point_to_itself_is_zero():
+    assert distance_squares(4, 4, 4, 4) == 0.0
+
+
+def test_feet_follow_from_squares():
+    assert distance_feet(distance_squares(0, 0, 6, 6)) == 30.0
+    assert distance_feet(0.5) == 2.5

@@ -40,12 +40,22 @@ socket.addEventListener("state", (event) => {
   // Hidden tokens are absent from this payload, not flagged -- the server never
   // sends a player something they are not meant to know exists. See ADR-004.
   board.setTokens(event.detail.state.tokens || []);
+  board.setTemplates(event.detail.state.templates || []);
   empty.hidden = Boolean(map);
   name.textContent = map ? map.name : "Waiting for the GM";
   initiativePanel.apply(event.detail.state.initiative);
 });
 
 socket.addEventListener("grid", (event) => board.setGrid(event.detail.grid));
+
+// Templates the GM has dropped. Concealed ones, and ones drawn over map this
+// player has not revealed, never arrive here at all.
+socket.addEventListener("templates", (e) => board.setTemplates(e.detail.templates));
+
+// Shift-drag measures, on this screen only. Escape puts the ruler away.
+document.addEventListener("keydown", (event) => {
+  if (event.key === "Escape") board.clearRuler();
+});
 
 socket.addEventListener("token.added", (e) => board.upsertToken(e.detail.token));
 socket.addEventListener("token.changed", (e) => board.upsertToken(e.detail.token));

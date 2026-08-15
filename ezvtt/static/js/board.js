@@ -17,6 +17,54 @@ const ZOOM_RATE = 0.0015;
 
 const LAYER_ORDER = { map: 0, object: 1, token: 2 };
 
+const TOOLS = ["select", "fog", "circle", "cone", "line"];
+const TEMPLATE_TOOLS = ["circle", "cone", "line"];
+
+/* One square is five feet. The ruler shows squares first, because that is the
+ * figure that stays true on a map drawn to some other scale. */
+const FEET_PER_SQUARE = 5;
+
+/* A 5e cone is as wide at its far end as it is long, which puts its edges at
+ * atan(0.5) either side of the direction it is pointed. Everything else about
+ * a cone follows from that one number. */
+const CONE_HALF_ANGLE = Math.atan(0.5);
+
+/* Brass, matching the accent. The GM can pick another; this is where a drag
+ * starts from. */
+const TEMPLATE_COLOR = "#d9a441";
+
+/** Chebyshev: a diagonal step costs the same as a straight one, as in 5e. */
+function squaresBetween(a, b) {
+  return Math.max(Math.abs(b.x - a.x), Math.abs(b.y - a.y));
+}
+
+function round1(value) {
+  return Math.round(value * 10) / 10;
+}
+
+/** Ray casting. Used for cones and lines, which are triangles and rectangles. */
+function pointInPolygon(x, y, points) {
+  let inside = false;
+  for (let i = 0, j = points.length - 1; i < points.length; j = i++) {
+    const { x: xi, y: yi } = points[i];
+    const { x: xj, y: yj } = points[j];
+    if ((yi > y) !== (yj > y) && x < ((xj - xi) * (y - yi)) / (yj - yi) + xi) {
+      inside = !inside;
+    }
+  }
+  return inside;
+}
+
+/* Templates are filled translucent and stroked solid, from one hex colour the
+ * server has already validated as #rgb or #rrggbb. */
+function withAlpha(hex, alpha) {
+  const value = String(hex || "#d9a441").replace("#", "");
+  const full = value.length === 3 ? value.split("").map((c) => c + c).join("") : value;
+  const int = parseInt(full, 16);
+  if (Number.isNaN(int)) return `rgba(217,164,65,${alpha})`;
+  return `rgba(${(int >> 16) & 255},${(int >> 8) & 255},${int & 255},${alpha})`;
+}
+
 /** Paint order: layer first, then z, then id so it is fully deterministic. */
 function compareTokens(a, b) {
   return (LAYER_ORDER[a.layer] ?? 1) - (LAYER_ORDER[b.layer] ?? 1)
@@ -59,12 +107,25 @@ export class Board {
   #fogOpacity = 0.55;
   #fogCanvas = null;
 
-  // "select" moves tokens and pans; "fog" paints. One at a time, because a
-  // brush that also drags furniture is a brush nobody trusts.
+  // "select" moves tokens and pans; "fog" paints; "circle" / "cone" / "line"
+  // drag out a template. One at a time, because a brush that also drags
+  // furniture is a brush nobody trusts.
   #tool = "select";
   #brushRadius = 2;
   #fogRevealing = true;
   #cursor = null;
+
+  // Area-of-effect templates: shared table state, drawn under the tokens so a
+  // creature standing in a fireball is still the thing you can see.
+  #templates = [];
+  #selectedTemplateId = null;
+  #templateWidth = 1;
+  #templateColor = TEMPLATE_COLOR;
+  // The shape being dragged out right now, and the measurement someone is
+  // taking. Both local: neither has been settled on yet, and a measurement
+  // never becomes table state at all. See ADR-014.
+  #draft = null;
+  #ruler = null;
 
   constructor(canvas, { interactive = true, editable = false, fogOpacity = 0.55 } = {}) {
     this.#canvas = canvas;
@@ -100,15 +161,50 @@ export class Board {
   }
 
   set tool(name) {
-    this.#tool = name === "fog" ? "fog" : "select";
-    if (this.#tool === "fog") this.select(null);
+    this.#tool = TOOLS.includes(name) ? name : "select";
+    if (this.#tool !== "select") {
+      this.select(null);
+      this.selectTemplate(null);
+    }
     this.#cursor = null;
-    this.#canvas.style.cursor = this.#tool === "fog" ? "none" : "grab";
+    this.#canvas.style.cursor =
+      this.#tool === "fog" ? "none" : (this.#tool === "select" ? "grab" : "crosshair");
     this.invalidate();
   }
 
   get tool() {
     return this.#tool;
+  }
+
+  set templateWidth(value) {
+    this.#templateWidth = Math.max(0.1, Math.min(20, Number(value) || 1));
+  }
+
+  get templateWidth() {
+    return this.#templateWidth;
+  }
+
+  set templateColor(value) {
+    this.#templateColor = value || TEMPLATE_COLOR;
+  }
+
+  get templateColor() {
+    return this.#templateColor;
+  }
+
+  /* Half-square steps. Spell radii land on square edges and a cone's apex
+   * usually sits on a corner or a cell centre, so halves cover both. Alt
+   * overrides, exactly as it does when placing a token. */
+  #snapValue(value, altKey) {
+    if (!this.#snap || altKey) return value;
+    return Math.round(value * 2) / 2;
+  }
+
+  /** Take the measurement off the screen. */
+  clearRuler() {
+    if (!this.#ruler) return;
+    this.#ruler = null;
+    this.invalidate();
   }
 
   set brushRadius(value) {
@@ -271,6 +367,81 @@ export class Board {
     this.#canvas.dispatchEvent(new CustomEvent("board:select", { detail: this.selected }));
   }
 
+  // ---------------------------------------------------------- templates --
+
+  setTemplates(templates) {
+    this.#templates = [...(templates || [])];
+    if (!this.#templates.some((t) => t.id === this.#selectedTemplateId)) {
+      this.#selectedTemplateId = null;
+    }
+    this.invalidate();
+  }
+
+  get templates() {
+    return this.#templates;
+  }
+
+  get selectedTemplate() {
+    return this.#templates.find((t) => t.id === this.#selectedTemplateId) || null;
+  }
+
+  selectTemplate(templateId) {
+    if (this.#selectedTemplateId === templateId) return;
+    this.#selectedTemplateId = templateId;
+    this.invalidate();
+    this.#canvas.dispatchEvent(new CustomEvent("board:templateselect", {
+      detail: this.selectedTemplate,
+    }));
+  }
+
+  /* Corners in grid units, for a cone or a line. Drawing and hit-testing both
+   * read this, so a shape can never be tested against an outline other than
+   * the one on screen. */
+  #outline(template) {
+    const { x, y, size, angle, kind } = template;
+    const heading = (angle * Math.PI) / 180;
+    const at = (distance, bearing) => ({
+      x: x + Math.cos(bearing) * distance,
+      y: y + Math.sin(bearing) * distance,
+    });
+
+    if (kind === "cone") {
+      // The far corners sit at the cone's half-angle either side, far enough
+      // along that the *axis* is `size` long rather than the edges.
+      const edge = size / Math.cos(CONE_HALF_ANGLE);
+      return [
+        { x, y },
+        at(edge, heading - CONE_HALF_ANGLE),
+        at(edge, heading + CONE_HALF_ANGLE),
+      ];
+    }
+
+    const half = (template.width || 1) / 2;
+    const across = heading + Math.PI / 2;
+    const tip = at(size, heading);
+    return [
+      { x: x + Math.cos(across) * half, y: y + Math.sin(across) * half },
+      { x: x - Math.cos(across) * half, y: y - Math.sin(across) * half },
+      { x: tip.x - Math.cos(across) * half, y: tip.y - Math.sin(across) * half },
+      { x: tip.x + Math.cos(across) * half, y: tip.y + Math.sin(across) * half },
+    ];
+  }
+
+  /** Topmost template containing a point in grid units, or null. */
+  templateAt(gridX, gridY) {
+    for (let i = this.#templates.length - 1; i >= 0; i--) {
+      const template = this.#templates[i];
+      if (template.kind === "circle") {
+        const dx = gridX - template.x;
+        const dy = gridY - template.y;
+        if (dx * dx + dy * dy <= template.size * template.size) return template;
+        continue;
+      }
+      if (pointInPolygon(gridX, gridY, this.#outline(template))) return template;
+    }
+    return null;
+  }
+
   /** Topmost token containing a point in grid units, or null. */
   tokenAt(gridX, gridY) {
     for (let i = this.#tokens.length - 1; i >= 0; i--) {
@@ -407,12 +578,108 @@ export class Board {
         this.#image.width * this.#scale, this.#image.height * this.#scale,
       );
       this.#drawGrid(ctx, width, height);
+      // Under the tokens: a creature standing in a fireball is still the thing
+      // you need to be able to see.
+      this.#drawTemplates(ctx);
       this.#drawTokens(ctx, width, height);
       this.#drawFog(ctx);
       this.#drawBrush(ctx);
+      this.#drawRuler(ctx);
     }
 
     ctx.restore();
+  }
+
+  #drawTemplates(ctx) {
+    const grid = this.#map?.grid;
+    if (!grid) return;
+
+    for (const template of this.#templates) {
+      this.#drawTemplate(ctx, template, template.id === this.#selectedTemplateId);
+    }
+    // The shape being dragged out, drawn the same way so what is released is
+    // what was seen.
+    if (this.#draft) this.#drawTemplate(ctx, this.#draft, false, true);
+  }
+
+  #drawTemplate(ctx, template, selected, draft = false) {
+    const grid = this.#map.grid;
+    const toScreen = (point) => ({
+      x: this.#originX + (grid.offset_x + point.x * grid.size_px) * this.#scale,
+      y: this.#originY + (grid.offset_y + point.y * grid.size_px) * this.#scale,
+    });
+
+    ctx.save();
+    ctx.fillStyle = withAlpha(template.color, template.hidden ? 0.12 : 0.22);
+    ctx.strokeStyle = template.color;
+    ctx.lineWidth = 2 / this.#dpr;
+    if (draft || template.hidden) ctx.setLineDash([6, 4]);
+
+    ctx.beginPath();
+    if (template.kind === "circle") {
+      const centre = toScreen(template);
+      ctx.arc(centre.x, centre.y, template.size * grid.size_px * this.#scale,
+              0, Math.PI * 2);
+    } else {
+      const points = this.#outline(template).map(toScreen);
+      ctx.moveTo(points[0].x, points[0].y);
+      for (const point of points.slice(1)) ctx.lineTo(point.x, point.y);
+      ctx.closePath();
+    }
+    ctx.fill();
+    ctx.stroke();
+
+    if (selected) {
+      ctx.setLineDash([4, 3]);
+      ctx.strokeStyle = "#f2f5f8";
+      ctx.stroke();
+    }
+    ctx.restore();
+
+    if (template.label) {
+      const origin = toScreen(template);
+      this.#drawLabel(ctx, template.label, origin.x, origin.y);
+    }
+  }
+
+  #drawRuler(ctx) {
+    if (!this.#ruler || !this.#map) return;
+
+    const grid = this.#map.grid;
+    const toScreen = (point) => ({
+      x: this.#originX + (grid.offset_x + point.x * grid.size_px) * this.#scale,
+      y: this.#originY + (grid.offset_y + point.y * grid.size_px) * this.#scale,
+    });
+    const from = toScreen(this.#ruler.from);
+    const to = toScreen(this.#ruler.to);
+
+    ctx.save();
+    ctx.strokeStyle = "#5b9dd9";
+    ctx.lineWidth = 2 / this.#dpr;
+    ctx.setLineDash([7, 5]);
+    ctx.beginPath();
+    ctx.moveTo(from.x, from.y);
+    ctx.lineTo(to.x, to.y);
+    ctx.stroke();
+
+    ctx.setLineDash([]);
+    for (const end of [from, to]) {
+      ctx.beginPath();
+      ctx.arc(end.x, end.y, 3 / this.#dpr, 0, Math.PI * 2);
+      ctx.fillStyle = "#5b9dd9";
+      ctx.fill();
+    }
+    ctx.restore();
+
+    // Feet are derived from the figure actually shown, not from the raw
+    // distance behind it -- "38.2 sq · 190.8 ft" invites a GM to check the
+    // arithmetic and find it wrong.
+    const squares = round1(squaresBetween(this.#ruler.from, this.#ruler.to));
+    this.#drawLabel(
+      ctx,
+      `${squares} sq · ${round1(squares * FEET_PER_SQUARE)} ft`,
+      to.x, to.y,
+    );
   }
 
   #drawBrush(ctx) {
@@ -655,7 +922,10 @@ export class Board {
       try { canvas.setPointerCapture(pointerId); } catch { /* not capturable */ }
 
       const point = localPoint(event);
-      const grid = this.#editable ? this.toGrid(point.x, point.y) : null;
+      // Measured by anyone, including a player: the ruler changes nothing, so
+      // it does not need the rights that moving something does.
+      const anyGrid = this.toGrid(point.x, point.y);
+      const grid = this.#editable ? anyGrid : null;
 
       // Fog mode takes the whole canvas: while the brush is selected, dragging
       // paints rather than moving whatever happens to be underneath.
@@ -668,7 +938,41 @@ export class Board {
         return;
       }
 
+      // Shift-drag measures, on every screen and with every tool but the fog
+      // brush, where Shift already means "conceal".
+      if (event.shiftKey && anyGrid) {
+        mode = "ruler";
+        this.#ruler = { from: anyGrid, to: anyGrid };
+        this.invalidate();
+        return;
+      }
+
+      if (TEMPLATE_TOOLS.includes(this.#tool) && grid) {
+        mode = "template";
+        this.#draft = {
+          kind: this.#tool,
+          x: this.#snapValue(grid.x, event.altKey),
+          y: this.#snapValue(grid.y, event.altKey),
+          size: 0, angle: 0, width: this.#templateWidth,
+          color: this.#templateColor, label: null, hidden: false,
+        };
+        this.invalidate();
+        return;
+      }
+
+      const template = grid ? this.templateAt(grid.x, grid.y) : null;
       const hit = grid ? this.tokenAt(grid.x, grid.y) : null;
+
+      // A token wins a contested click: the template under it is scenery for
+      // the moment, and the creature is what the GM reached for.
+      if (!hit && template) {
+        mode = "pan";
+        this.select(null);
+        this.selectTemplate(template.id);
+        canvas.style.cursor = "grabbing";
+        return;
+      }
+      if (this.#editable) this.selectTemplate(null);
 
       if (hit) {
         mode = "token";
@@ -699,6 +1003,26 @@ export class Board {
         const p = localPoint(event);
         const g = this.toGrid(p.x, p.y);
         if (g) this.#emitFog(g.x, g.y);
+        return;
+      }
+
+      if (mode === "ruler") {
+        const p = localPoint(event);
+        const g = this.toGrid(p.x, p.y);
+        if (g) { this.#ruler.to = g; this.invalidate(); }
+        return;
+      }
+
+      if (mode === "template") {
+        const p = localPoint(event);
+        const g = this.toGrid(p.x, p.y);
+        if (!g) return;
+        const reach = squaresBetween(this.#draft, g);
+        this.#draft.size = Math.max(0.1, this.#snapValue(reach, event.altKey));
+        this.#draft.angle =
+          (Math.atan2(g.y - this.#draft.y, g.x - this.#draft.x) * 180) / Math.PI;
+        this.#draft.width = this.#templateWidth;
+        this.invalidate();
         return;
       }
 
@@ -738,6 +1062,23 @@ export class Board {
           detail: { id: dragToken.id, x: dragToken.x, y: dragToken.y },
         }));
       }
+
+      // Only the shape settled on is sent, once. Every frame of the drag was a
+      // local preview of a decision not yet made.
+      if (mode === "template" && this.#draft) {
+        const draft = this.#draft;
+        this.#draft = null;
+        this.invalidate();
+        if (draft.size >= 0.1) {
+          canvas.dispatchEvent(new CustomEvent("board:templateplace", {
+            detail: {
+              kind: draft.kind, x: draft.x, y: draft.y,
+              size: draft.size, angle: draft.angle, width: draft.width,
+            },
+          }));
+        }
+      }
+
       mode = null;
       dragToken = null;
       pointerId = null;

@@ -35,10 +35,15 @@ initiativePanel.addEventListener("change", () => {
 
 socket.addEventListener("initiative", (e) => initiativePanel.apply(e.detail.initiative));
 
+// This window is sent the GM's list, concealed templates included; the
+// projector drops them, exactly as it does hidden tokens.
+socket.addEventListener("templates", (e) => board.setTemplates(visible(e.detail.templates)));
+
 socket.addEventListener("state", (event) => {
   const map = event.detail.state.map || null;
   board.setMap(map);
   board.setTokens(visible(event.detail.state.tokens));
+  board.setTemplates(visible(event.detail.state.templates));
   board.setFog(event.detail.state.fog || null);
   initiativePanel.apply(event.detail.state.initiative);
   idle.hidden = Boolean(map);
