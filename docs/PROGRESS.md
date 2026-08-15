@@ -11,14 +11,14 @@ without reading the codebase.
 ## Start here
 
 **State at 2026-08-15.** Phases 0–7 done. Phase 8 under way: scenes, the
-initiative tracker, and measuring ship.
+initiative tracker, measuring, and pointing all ship.
 
 | | |
 |---|---|
 | Branch | `rewrite/fastapi-vtt`, everything committed and pushed |
 | PR | [#1](https://github.com/DavidKendig/EzVTT/pull/1) — open, not merged |
 | `main` | still the original Java/Django prototype; the PR replaces it |
-| Tests | **549**, all passing |
+| Tests | **566**, all passing |
 | Lint | `ruff check .` clean |
 
 ```bash
@@ -33,11 +33,12 @@ footprints parsed from filenames · tokens on three layers · accounts with a
 forced first-run admin · fog that removes concealed pixels server-side · chat
 with server-rolled dice and private rolls · join-by-QR · a campaign wiki that
 shares nothing until you tick a folder · several scenes per map, switched with
-one click · an initiative tracker on all three screens · **a ruler, and
-fireballs the table can see.**
+one click · an initiative tracker on all three screens · a ruler, and
+fireballs the table can see · **Alt-click to point at something.**
 
-**Next:** Phase 8 continues — ping, then grid auto-detect. See the bottom of
-this file.
+**Next:** Phase 8 continues — **grid auto-detect**, the biggest remaining win
+for the under-a-minute promise and the fiddliest to get right. See the bottom
+of this file.
 
 **Two things a cold session should not "fix":**
 
@@ -47,6 +48,65 @@ this file.
 2. `scripts/stop.ps1` sends a console control event from a child process rather
    than calling `taskkill`. Windows has no SIGTERM for console apps, and doing
    the console dance inline breaks the calling shell.
+
+---
+
+## Session 12 — 2026-08-15 · Phase 8 · **ping**
+
+**Where the project stands:** four of Phase 8's items are done. Alt-click a
+square and everyone who can see it gets a marker there for a moment, with the
+name of whoever pointed. Grid auto-detect is next, and it is the big one.
+
+### Shipped
+
+- **`ezvtt/ping.py`** — the rate limit, the coordinate check, and the audience
+  rule, as pure functions. They *are* the feature, and they are worth being
+  able to test without a socket — the same reason `chat.visible_to` lives in a
+  module rather than in the hub
+- `board.ping` — two rings a beat apart, expanding and fading over 2.4s, drawn
+  **over** the fog and labelled with the sender
+- The gesture: **Alt-click** points, while **Alt-drag** still moves a token off
+  the grid as it always has. Which one it was is only knowable on release, so
+  the decision is deferred to `endDrag`
+
+### The three things this program draws on a board
+
+Appended to **ADR-014**, because the distinction is now the interesting part:
+
+| | who sees it | what is kept |
+|---|---|---|
+| ruler | only the person dragging | nothing |
+| **ping** | **everyone allowed that square** | **nothing** |
+| template | everyone allowed to see it | a row, until it is cleared |
+
+Any signed-in person may ping — players say "no, the *other* door" at least as
+often as the GM — so it is rate-limited to one a second each, and a refused one
+is dropped silently, since whoever clicked already knows they clicked.
+
+### The name collision worth remembering
+
+The obvious intent name, `ping`, was **already taken by the socket keepalive**,
+which `ws.js` sends every few seconds and the hub answers with a pong. Handing
+that name to this feature would have put a marker on everybody's map on every
+heartbeat. The intent is `board.ping`; the comment in `_TABLE_INTENTS` says why.
+
+### Verified, not just written
+
+Three live sockets against a running server, on a copy of `data/`:
+
+- GM points at a **revealed** square → GM, player, and projector all get it,
+  named *Gary*
+- GM points **into the dark** → GM and projector get it; the player gets
+  **nothing**
+- A **player** points → everyone gets it, named *Player One*
+- **Two pings in the same instant → one delivered.** The rate limit holds
+- A ping at **NaN** was refused to the sender alone: *"A ping needs a position."*
+- The rings draw and expire: 0 marker pixels before, 22 immediately after, 28
+  midway, **0** once it lapsed
+- The gesture is unambiguous: alt-click fired one ping, alt-**drag** fired none,
+  a plain click fired none
+
+**566 tests, ruff clean** — `tests/test_ping.py` adds 17.
 
 ---
 
@@ -525,8 +585,7 @@ order of how often it would be wanted:
 1. ~~**Scenes**~~ — done, Session 9.
 2. ~~**Initiative tracker**~~ — done, Session 10.
 3. ~~**Ruler and AoE templates**~~ — done, Session 11.
-4. **Ping** — alt-click a spot and everyone sees it. Small, and the thing that
-   most reduces "no, the *other* door".
+4. ~~**Ping**~~ — done, Session 12.
 5. **Grid auto-detect** from the map image. The single biggest win for the
    under-a-minute promise, and the fiddliest to get right.
 6. Token HP bars and condition markers; undo/redo; handout push; campaign

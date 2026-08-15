@@ -770,6 +770,12 @@ socket.addEventListener("templates", (e) => {
   syncTemplatePanel();
 });
 
+// Pings are drawn from the server's copy, including our own -- so what the GM
+// sees is what the table saw, not an optimistic mark nobody else got.
+socket.addEventListener("ping", (e) => board.ping(e.detail.x, e.detail.y, e.detail.by));
+
+board.element.addEventListener("board:ping", (e) => socket.send("board.ping", e.detail));
+
 socket.addEventListener("fog", (e) => {
   board.setFog({ cols: e.detail.cols, rows: e.detail.rows, cells: e.detail.cells });
   updateFogStatus();

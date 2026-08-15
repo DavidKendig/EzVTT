@@ -170,7 +170,8 @@ Scaffolding, licensing, and the skeleton everything else hangs off.
       shown on the GM screen, the player view, and the projector
 - [x] Ruler in grid units; AoE templates (cone, circle, line) — the ruler is
       local to whoever drags it, templates are shared table state
-- [ ] Alt-click **ping** visible to everyone
+- [x] Alt-click **ping** visible to everyone — players too, rate-limited, and
+      never delivered onto ground a player has not revealed
 - [ ] **Grid auto-detect** from the map image
 - [ ] Undo/redo for GM board edits
 - [ ] Token HP bars and condition markers

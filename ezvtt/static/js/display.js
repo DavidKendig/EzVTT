@@ -39,6 +39,10 @@ socket.addEventListener("initiative", (e) => initiativePanel.apply(e.detail.init
 // projector drops them, exactly as it does hidden tokens.
 socket.addEventListener("templates", (e) => board.setTemplates(visible(e.detail.templates)));
 
+// The projector is where a ping is most useful: it is the screen everyone is
+// already looking at.
+socket.addEventListener("ping", (e) => board.ping(e.detail.x, e.detail.y, e.detail.by));
+
 socket.addEventListener("state", (event) => {
   const map = event.detail.state.map || null;
   board.setMap(map);

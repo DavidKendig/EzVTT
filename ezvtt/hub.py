@@ -43,6 +43,8 @@ class Connection:
     # player's browser. The display window follows the GM's view but has no
     # authority of its own.
     surface: str = "play"
+    # When this connection last pinged, for the rate limit in ping.allowed.
+    last_ping_at: float | None = None
 
     @property
     def is_gm(self) -> bool:
@@ -270,6 +272,26 @@ class Hub:
         player_state = state.snapshot(for_gm=False)
         await self.deliver([
             (c, {"type": "state", "state": player_state}) for c in players
+        ])
+
+    async def broadcast_ping(self, x: float, y: float, by: str, scene_id: int) -> None:
+        """Send a ping to everyone allowed to see that spot.
+
+        Filtered per connection through ``ping.visible_to``: a player is not
+        shown a marker standing on ground they have not revealed, the same rule
+        their tokens and templates already follow.
+        """
+        from . import fog
+        from . import ping as ping_rules
+
+        async with self._lock:
+            targets = list(self.connections)
+
+        fog_state = fog.get(scene_id)
+        envelope = {"type": "ping", "x": x, "y": y, "by": by}
+        await self.deliver([
+            (c, envelope) for c in targets
+            if ping_rules.visible_to(x, y, c.is_gm, fog_state)
         ])
 
     async def broadcast_templates(self, scene_id: int) -> None:
@@ -814,7 +836,30 @@ async def _chat_history(hub: Hub, connection: Connection, payload: dict[str, Any
     })
 
 
+async def _ping(hub: Hub, connection: Connection, payload: dict[str, Any]) -> None:
+    """Point at a spot on the map.
+
+    Open to any signed-in person, not just the GM: "no, the *other* door" is
+    said by players at least as often, and a ping changes nothing that could be
+    abused beyond the rate limit below.
+    """
+    from . import ping as ping_rules
+
+    now = asyncio.get_running_loop().time()
+    if not ping_rules.allowed(connection.last_ping_at, now):
+        return                                   # silently; they know they clicked
+
+    x, y = ping_rules.clean_point(payload.get("x"), payload.get("y"))
+    connection.last_ping_at = now
+
+    await hub.broadcast_ping(x, y, connection.principal.display_name, _require_scene())
+
+
 _TABLE_INTENTS = {
+    # NOT "ping": that is the socket keepalive, answered with a pong above.
+    # Naming this one the same would have made every heartbeat a marker on
+    # everybody's map.
+    "board.ping": _ping,
     "chat.say": _chat_say,
     "chat.roll": _chat_roll,
     "chat.whisper": _chat_whisper,

@@ -52,6 +52,12 @@ socket.addEventListener("grid", (event) => board.setGrid(event.detail.grid));
 // player has not revealed, never arrive here at all.
 socket.addEventListener("templates", (e) => board.setTemplates(e.detail.templates));
 
+/* Alt-click points at a spot for the whole table. This is the one thing a
+ * player may put on everyone else's screen -- it changes nothing, and "no, the
+ * *other* door" is said by players as often as by the GM. */
+board.element.addEventListener("board:ping", (e) => socket.send("board.ping", e.detail));
+socket.addEventListener("ping", (e) => board.ping(e.detail.x, e.detail.y, e.detail.by));
+
 // Shift-drag measures, on this screen only. Escape puts the ruler away.
 document.addEventListener("keydown", (event) => {
   if (event.key === "Escape") board.clearRuler();

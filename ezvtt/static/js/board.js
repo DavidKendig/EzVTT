@@ -33,6 +33,15 @@ const CONE_HALF_ANGLE = Math.atan(0.5);
  * starts from. */
 const TEMPLATE_COLOR = "#d9a441";
 
+/* Long enough for someone looking at the other screen to catch it, short
+ * enough that it is gone before it becomes clutter. */
+const PING_MS = 2400;
+const PING_COLOR = "#e05c5c";
+
+/* A click and a drag start identically. This is how far the pointer may travel
+ * and still count as pointing at something. */
+const CLICK_SLOP_PX = 4;
+
 /** Chebyshev: a diagonal step costs the same as a straight one, as in 5e. */
 function squaresBetween(a, b) {
   return Math.max(Math.abs(b.x - a.x), Math.abs(b.y - a.y));
@@ -126,6 +135,10 @@ export class Board {
   // never becomes table state at all. See ADR-014.
   #draft = null;
   #ruler = null;
+  // Live pings, dropped as they expire. Never stored anywhere: a ping is a
+  // gesture at a shared screen, and it has done its job before anyone could
+  // ask what happened to it.
+  #pings = [];
 
   constructor(canvas, { interactive = true, editable = false, fogOpacity = 0.55 } = {}) {
     this.#canvas = canvas;
@@ -198,6 +211,12 @@ export class Board {
   #snapValue(value, altKey) {
     if (!this.#snap || altKey) return value;
     return Math.round(value * 2) / 2;
+  }
+
+  /** Mark a spot for a couple of seconds. */
+  ping(x, y, by = "") {
+    this.#pings.push({ x, y, by, at: performance.now() });
+    this.invalidate();
   }
 
   /** Take the measurement off the screen. */
@@ -585,9 +604,46 @@ export class Board {
       this.#drawFog(ctx);
       this.#drawBrush(ctx);
       this.#drawRuler(ctx);
+      // Over the fog, deliberately: the GM pinging into a concealed corridor is
+      // pointing at something they can see and the table cannot. A player is
+      // never sent that ping in the first place.
+      this.#drawPings(ctx);
     }
 
     ctx.restore();
+  }
+
+  #drawPings(ctx) {
+    if (this.#pings.length === 0) return;
+
+    const grid = this.#map.grid;
+    const now = performance.now();
+    this.#pings = this.#pings.filter((p) => now - p.at < PING_MS);
+
+    for (const ping of this.#pings) {
+      const progress = (now - ping.at) / PING_MS;
+      const x = this.#originX + (grid.offset_x + ping.x * grid.size_px) * this.#scale;
+      const y = this.#originY + (grid.offset_y + ping.y * grid.size_px) * this.#scale;
+      // Two rings a beat apart, each expanding and fading: one circle appearing
+      // is easy to miss on a screen six people are looking at.
+      for (const offset of [0, 0.35]) {
+        const phase = progress - offset;
+        if (phase < 0 || phase > 1) continue;
+        ctx.save();
+        ctx.globalAlpha = 1 - phase;
+        ctx.strokeStyle = PING_COLOR;
+        ctx.lineWidth = 3 / this.#dpr;
+        ctx.beginPath();
+        ctx.arc(x, y, (0.3 + phase * 1.4) * grid.size_px * this.#scale, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.restore();
+      }
+      if (ping.by) this.#drawLabel(ctx, ping.by, x, y);
+    }
+
+    // Animated, so the board has to keep painting while any are alive. Nothing
+    // else here needs a frame it did not ask for.
+    if (this.#pings.length > 0) this.invalidate();
   }
 
   #drawTemplates(ctx) {
@@ -905,6 +961,7 @@ export class Board {
     let pointerId = null;
     let dragToken = null;
     let grabOffset = { x: 0, y: 0 };
+    let pingCandidate = null;
 
     const localPoint = (event) => {
       const rect = canvas.getBoundingClientRect();
@@ -926,6 +983,15 @@ export class Board {
       // it does not need the rights that moving something does.
       const anyGrid = this.toGrid(point.x, point.y);
       const grid = this.#editable ? anyGrid : null;
+
+      // Alt-click points at a spot; alt-*drag* still moves a token off the
+      // grid, as it always has. Which one it was is only knowable on release,
+      // so the decision is deferred to endDrag. Not while the fog brush is up:
+      // Alt is not part of that gesture, and a stray ping mid-conceal would be
+      // pointing at the very thing being hidden.
+      pingCandidate = event.altKey && this.#tool !== "fog" && anyGrid
+        ? { x: event.clientX, y: event.clientY, grid: anyGrid }
+        : null;
 
       // Fog mode takes the whole canvas: while the brush is selected, dragging
       // paints rather than moving whatever happens to be underneath.
@@ -1057,6 +1123,16 @@ export class Board {
 
     const endDrag = (event) => {
       if (event.pointerId !== pointerId) return;
+
+      if (pingCandidate
+          && Math.abs(event.clientX - pingCandidate.x) <= CLICK_SLOP_PX
+          && Math.abs(event.clientY - pingCandidate.y) <= CLICK_SLOP_PX) {
+        canvas.dispatchEvent(new CustomEvent("board:ping", {
+          detail: { x: pingCandidate.grid.x, y: pingCandidate.grid.y },
+        }));
+      }
+      pingCandidate = null;
+
       if (mode === "token" && dragToken) {
         canvas.dispatchEvent(new CustomEvent("board:tokendrop", {
           detail: { id: dragToken.id, x: dragToken.x, y: dragToken.y },

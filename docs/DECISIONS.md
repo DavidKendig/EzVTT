@@ -439,3 +439,28 @@ where it lies -- is absent from a player's payload, and so is one drawn entirely
 over map they have not revealed, since a circle over unexplored ground is a map
 of the unexplored part. The colour is validated as hex before it is stored,
 because it reaches a canvas fill style on every client.
+
+**Amended 2026-08-15 — ping is the third case.** Alt-clicking marks a spot on
+every screen that can see it, and stores nothing:
+
+| | who sees it | what is kept |
+|---|---|---|
+| ruler | only the person dragging | nothing |
+| **ping** | **everyone allowed that square** | **nothing** |
+| template | everyone allowed to see it | a row, until it is cleared |
+
+Persisting a ping would mean choosing when it expires and reconciling that
+across five clients, for a mark that has done its job before anyone could ask
+what happened to it. It is a finger on a shared screen, not a thing on the map.
+
+**Any signed-in person may ping**, players included -- "no, the *other* door" is
+said by them at least as often, and the marker changes nothing. What that opens
+is noise, so it is rate-limited to one a second per person; a refused ping is
+dropped silently, since the person who clicked already knows they clicked.
+
+The fog rule applies unchanged: a player is not sent a ping standing on ground
+they have not revealed. The GM and the projector see all of them -- the
+projector is showing the real map with the fog drawn over it, so a marker in a
+concealed corridor is information the GM already has. And `clean_point` refuses
+NaN explicitly, because it survives JSON, compares false against every bound,
+and would be drawn at no position at all on every client that received it.
