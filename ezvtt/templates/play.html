@@ -13,6 +13,8 @@
   <div class="board">
     <canvas class="board__canvas" id="board-canvas"></canvas>
 
+    {% with initiative_variant = "play" %}{% include "_initiative.html" %}{% endwith %}
+
     <div class="empty board__empty" id="board-empty">
       <div class="empty__icon" aria-hidden="true">🗺</div>
       <p class="empty__title">No map on the table yet</p>

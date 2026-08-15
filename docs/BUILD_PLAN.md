@@ -166,7 +166,8 @@ Scaffolding, licensing, and the skeleton everything else hangs off.
 - [x] Scenes — prep several encounters, switch with one click
       (several per map, rename, copy layout *and* fog, delete; clicking a map
       returns to the scene last run; scene names never reach players)
-- [ ] Initiative tracker
+- [x] Initiative tracker — per scene, d20 rolled server-side, entries concealable,
+      shown on the GM screen, the player view, and the projector
 - [ ] Ruler in grid units; AoE templates (cone, circle, line)
 - [ ] Alt-click **ping** visible to everyone
 - [ ] **Grid auto-detect** from the map image

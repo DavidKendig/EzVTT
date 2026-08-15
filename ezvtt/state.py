@@ -638,10 +638,17 @@ def snapshot(for_gm: bool) -> dict[str, Any]:
 
     if scene is None:
         state["tokens"] = []
+        state["initiative"] = {"round": 0, "entries": [], "current_id": None}
         if for_gm:
             state["library"] = list_maps()
             state["scenes"] = list_scenes()
         return state
+
+    from . import initiative as initiative_module
+
+    # Before the fail-closed branch below: the turn order is not map data, and a
+    # table that cannot be shown the map should still know whose turn it is.
+    state["initiative"] = initiative_module.get(scene["id"], for_gm=for_gm)
 
     fog_state = fog_module.get(scene["id"]) if active_map else None
     tokens = list_tokens(scene["id"], include_hidden=for_gm)

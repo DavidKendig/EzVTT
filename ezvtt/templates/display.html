@@ -14,6 +14,10 @@
 
   <canvas class="board__canvas board--bare" id="board-canvas" hidden></canvas>
 
+  {# The one piece of interface this window earns: whose turn it is. It appears
+     only while a combat is running and disappears with it. #}
+  {% with initiative_variant = "display" %}{% include "_initiative.html" %}{% endwith %}
+
   <div class="display-idle" id="display-idle">
     <div class="display-idle__brand"><span>Ez</span>VTT</div>
     <p class="display-idle__hint">Waiting for the GM to put a map on the table.</p>

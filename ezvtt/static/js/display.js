@@ -6,6 +6,7 @@
  */
 
 import { Board } from "./board.js";
+import { InitiativePanel } from "./initiative.js";
 import { TableSocket } from "./ws.js";
 
 const canvas = document.getElementById("board-canvas");
@@ -23,11 +24,23 @@ const socket = new TableSocket("display");
  * marked hidden is dropped here rather than drawn faintly. */
 const visible = (tokens) => (tokens || []).filter((t) => !t.hidden);
 
+/* The same applies to the turn order: this window is sent the GM's copy,
+ * concealed entries and all, and the panel drops them for the projector. */
+const initiativePanel = new InitiativePanel(
+  document.getElementById("initiative-panel"), socket,
+);
+initiativePanel.addEventListener("change", () => {
+  board.setCurrentToken(initiativePanel.currentTokenId);
+});
+
+socket.addEventListener("initiative", (e) => initiativePanel.apply(e.detail.initiative));
+
 socket.addEventListener("state", (event) => {
   const map = event.detail.state.map || null;
   board.setMap(map);
   board.setTokens(visible(event.detail.state.tokens));
   board.setFog(event.detail.state.fog || null);
+  initiativePanel.apply(event.detail.state.initiative);
   idle.hidden = Boolean(map);
   canvas.hidden = !map;
 });

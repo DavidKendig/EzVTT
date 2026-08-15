@@ -10,14 +10,15 @@ without reading the codebase.
 
 ## Start here
 
-**State at 2026-08-14.** Phases 0–7 done. Phase 8 started: scenes ship.
+**State at 2026-08-14.** Phases 0–7 done. Phase 8 under way: scenes and the
+initiative tracker ship.
 
 | | |
 |---|---|
 | Branch | `rewrite/fastapi-vtt`, everything committed and pushed |
 | PR | [#1](https://github.com/DavidKendig/EzVTT/pull/1) — open, not merged |
 | `main` | still the original Java/Django prototype; the PR replaces it |
-| Tests | **472**, all passing |
+| Tests | **508**, all passing |
 | Lint | `ruff check .` clean |
 
 ```bash
@@ -31,11 +32,11 @@ without reading the codebase.
 footprints parsed from filenames · tokens on three layers · accounts with a
 forced first-run admin · fog that removes concealed pixels server-side · chat
 with server-rolled dice and private rolls · join-by-QR · a campaign wiki that
-shares nothing until you tick a folder · **several scenes per map, switched with
-one click.**
+shares nothing until you tick a folder · several scenes per map, switched with
+one click · **an initiative tracker on all three screens.**
 
-**Next:** Phase 8 continues — the initiative tracker. See the bottom of this
-file.
+**Next:** Phase 8 continues — the ruler and AoE templates. See the bottom of
+this file.
 
 **Two things a cold session should not "fix":**
 
@@ -45,6 +46,76 @@ file.
 2. `scripts/stop.ps1` sends a console control event from a child process rather
    than calling `taskkill`. Windows has no SIGTERM for console apps, and doing
    the console dance inline breaks the calling shell.
+
+---
+
+## Session 10 — 2026-08-14 · Phase 8 · **the initiative tracker**
+
+**Where the project stands:** a fight runs on all three screens at once. The GM
+rolls the order, hands the turn on, and the projector shows the table whose turn
+it is; the creature acting is ringed in green on the board.
+
+### Shipped
+
+- **`004_initiative.sql`** — `initiative.modifier`, `initiative.is_hidden`,
+  `scenes.initiative_round`. The table itself has existed, unused, since 001
+- **`ezvtt/initiative.py`** — order, turns, rounds, concealment, server-rolled
+  d20s, and the repair paths for losing the creature whose turn it is
+- Nine hub intents (`initiative.add` · `update` · `remove` · `clear` · `roll` ·
+  `start` · `stop` · `advance` · `jump`), GM-only
+- **`_initiative.html` + `static/js/initiative.js`** — one panel, three
+  surfaces: interactive for the GM, read-only for the player view and the
+  projector, and on those two it appears only while a combat is running
+- `board.setCurrentToken` rings the acting creature in green — distinct from
+  the brass dashed selection, so a GM can have one token selected and see whose
+  turn it is at the same time
+
+### The rules it rests on
+
+Written up as **ADR-013**:
+
+1. **Per scene, not per table.** Switching away mid-fight and back returns to
+   round four with the right creature up. Since scenes shipped this session,
+   that is a thing GMs will actually do.
+2. **A concealed entry never reaches a player.** It is inherited from the token
+   and **re-synced when the token is hidden or revealed** — otherwise revealing
+   the ambush is a two-step act, and hiding a token again leaves its name in the
+   players' order.
+3. **The d20 is thrown on the server.** There is nowhere in the intent to put a
+   result.
+
+**One leak is admitted rather than papered over.** When a concealed creature is
+acting, players get the round but no current entry: they can tell *someone* they
+cannot see is in the fight. The turn has to pass through that slot. The
+identity, the score, and the head-count stay hidden, and freezing their round
+number instead would make the tracker lie to them.
+
+### Verified, not just written
+
+Again against a running server on a **copy** of `data/`:
+
+- **Add tokens** with only scenery on the board answered *"Put some creatures on
+  the board first"* — it adds the creature layer, not the furniture
+- Three creatures added under their own labels; the hidden one **joined
+  concealed**, dimmed with a *Reveal* action rather than a *Hide* one
+- **Roll all** produced 14 / 12 / 6 and the list re-sorted; **Start combat** put
+  the top of the order up on round 1
+- **Three live sockets through a whole round.** GM and projector saw all three
+  entries; the player saw two. When the concealed assassin came up on round 2
+  the player got `round: 2, current_id: null` — the round moved, the name did
+  not arrive. Revealing the assassin's *token* put it into the players' order in
+  the same instant. Deleting it mid-turn handed the turn to Brand **without**
+  ticking the round over
+- The projector drops concealed entries client-side (it authenticates as the GM,
+  so it receives them) and carries no controls; its panel disappears when the
+  combat ends
+- Clicking a row jumped the turn to it and left the round alone
+- **The green turn ring draws:** 0 matching pixels before `setCurrentToken`,
+  116 after. Measured on a `Board` built for the purpose, because this session's
+  browser pane is not displayed and the render loop skips while `document.hidden`
+
+**508 tests, ruff clean** — `tests/test_initiative.py` adds 36, including the
+two repair paths and both concealment rules.
 
 ---
 
@@ -389,9 +460,10 @@ Everything a GM reaches for mid-session that is currently missing. Roughly in
 order of how often it would be wanted:
 
 1. ~~**Scenes**~~ — done, Session 9.
-2. **Initiative tracker** — the `initiative` table exists and is unused. It is
-   already keyed by `scene_id`, so it follows a scene switch for free.
-3. **Ruler in grid units, and AoE templates** (cone, circle, line).
+2. ~~**Initiative tracker**~~ — done, Session 10.
+3. **Ruler in grid units, and AoE templates** (cone, circle, line). Client-side
+   drawing over the board, but the *shared* templates a GM drops for the table
+   have to be server state like everything else.
 4. **Ping** — alt-click a spot and everyone sees it. Small, and the thing that
    most reduces "no, the *other* door".
 5. **Grid auto-detect** from the map image. The single biggest win for the

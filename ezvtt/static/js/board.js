@@ -40,6 +40,9 @@ export class Board {
 
   #tokens = [];
   #selectedId = null;
+  // The token whose turn it is, ringed on the board. "No, the *other* goblin"
+  // is the thing this removes.
+  #currentTokenId = null;
   // Asset images, keyed by URL. A scene commonly repeats the same barrel a
   // dozen times; decoding it once and reusing it is the difference between a
   // board that opens instantly and one that hitches.
@@ -248,6 +251,13 @@ export class Board {
 
   get selectedId() {
     return this.#selectedId;
+  }
+
+  /** Ring the token whose turn it is. Pass null for "no combat running". */
+  setCurrentToken(tokenId) {
+    if (this.#currentTokenId === tokenId) return;
+    this.#currentTokenId = tokenId;
+    this.invalidate();
   }
 
   get selected() {
@@ -513,6 +523,10 @@ export class Board {
 
       ctx.restore();
 
+      if (token.id === this.#currentTokenId) {
+        this.#drawTurnMarker(ctx, screenX, screenY, width, height);
+      }
+
       if (token.id === this.#selectedId) {
         this.#drawSelection(ctx, screenX, screenY, width, height);
       }
@@ -521,6 +535,17 @@ export class Board {
         this.#drawLabel(ctx, token.label, screenX + width / 2, screenY + height);
       }
     }
+  }
+
+  /* A solid ring under the selection's dashed one, so a GM can have a creature
+   * selected and see whose turn it is at the same time without the two markers
+   * being mistaken for each other. */
+  #drawTurnMarker(ctx, x, y, width, height) {
+    ctx.save();
+    ctx.strokeStyle = "#57b46b";
+    ctx.lineWidth = 3 / this.#dpr;
+    ctx.strokeRect(x - 2, y - 2, width + 4, height + 4);
+    ctx.restore();
   }
 
   #drawSelection(ctx, x, y, width, height) {

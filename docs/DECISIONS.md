@@ -342,3 +342,54 @@ than promoting a sibling — switching the room to a different encounter unasked
 is worse than an empty board, and the switcher is right there. Copying a scene
 copies its fog mask as well as its layout; a duplicate of a half-explored
 dungeon that arrived fully concealed would not be a copy of it.
+
+---
+
+## ADR-013 — The initiative tracker belongs to the scene, and conceals entries
+
+**Date:** 2026-08-14 · **Status:** Accepted
+
+**Decision.** Turn order and round number are per scene, not per table. Entries
+may be **concealed**, and a concealed entry is absent from a player's payload
+rather than flagged in it. An entry bound to a token inherits that token's
+concealment and keeps following it. The GM's screen, the player view, and the
+projector all render the same component; only the GM's is interactive.
+
+**Why per scene.** Combat belongs to the encounter. Since ADR-012 a GM can
+switch to another scene mid-fight — to show a map of the wider region, or
+because the party fled somewhere prepped — and switching back must return to
+round four with the right creature acting. A table-wide tracker would have
+silently reset the fight. `scenes.initiative_round` at zero means no combat is
+running there, which is also what makes the panel appear and disappear on the
+player and projector views without a separate flag.
+
+**Why entries can be concealed.** A GM rolls the ambush into the order before
+the party knows there is one. Concealment is inherited from the token when the
+entry is created and **re-synced whenever the token is hidden or revealed** —
+without that, revealing the ambush would be a two-step act (token, then entry)
+and, worse, hiding a token again would leave its name sitting in the players'
+turn order.
+
+**The residual leak, stated plainly.** When the creature acting is concealed, a
+player is sent the round but no `current_id`: they see the round tick over with
+nobody highlighted. That tells them *someone* they cannot see is in the fight.
+There is no way around it short of not showing players the tracker at all — the
+turn has to pass through that slot. What stays hidden is the identity, the
+score, and the count, which is the part that matters. The alternative,
+freezing the round number on their screen, would make the tracker lie.
+
+**Why rolling is server-side.** `initiative.roll` carries a request, never a
+result, and `dice.evaluate` throws the d20 here. Same rule as chat rolls: there
+is nowhere in the intent for a client to put a number. See ADR-004.
+
+**Consequences.** The tracker has to survive the creature whose turn it is
+dying, which is the most ordinary thing that can happen to it: the initiative
+row cascades away with its token, so `initiative.get` repairs a combat left with
+no current entry as it reads, and `remove` works out the successor *before* the
+delete, from an order the doomed row is still part of. Removing a creature never
+ticks the round over — a creature dying is not the table taking a turn.
+
+Ending a combat keeps the order and only zeroes the round; the party is still
+the party after the fight, and retyping four names is not a feature. Clicking a
+row hands the turn straight to it, because "no, we skipped Anya" is the most
+common correction at a table and should not cost four clicks and a round.

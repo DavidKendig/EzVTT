@@ -1,0 +1,49 @@
+{# The initiative tracker, shared by all three surfaces.
+
+   variant "gm"      the controls: add, roll, hand the turn on
+   variant "play"    read-only, and only while a combat is running
+   variant "display" read-only and larger, for the projector
+
+   The display window authenticates as the GM, so it is *sent* concealed
+   entries. It drops them itself, exactly as it already does with hidden
+   tokens -- see static/js/initiative.js. #}
+
+{% set variant = initiative_variant | default("play") %}
+
+<aside class="initiative initiative--{{ variant }}" id="initiative-panel"
+       data-variant="{{ variant }}" hidden>
+
+  <div class="initiative__head">
+    <span class="initiative__round" data-init-round>Initiative</span>
+
+    {% if variant == "gm" %}
+      <span class="row" style="gap:4px; margin-left:auto">
+        <button class="btn btn--ghost btn--sm" data-init-prev type="button"
+                title="Back a turn" aria-label="Back a turn">&lsaquo;</button>
+        <button class="btn btn--sm btn--primary" data-init-next type="button"
+                title="Hand the turn on">Next turn</button>
+      </span>
+    {% endif %}
+  </div>
+
+  <ol class="initiative__list" data-init-list></ol>
+
+  {% if variant == "gm" %}
+    <p class="initiative__empty" data-init-empty>
+      Nobody in the order yet. <strong>Add tokens</strong> puts every creature on
+      the board into it under its own name.
+    </p>
+
+    <div class="initiative__foot">
+      <button class="btn btn--sm" data-init-add-tokens type="button">Add tokens</button>
+      <button class="btn btn--sm" data-init-add type="button">+ Name</button>
+      <button class="btn btn--sm" data-init-roll type="button"
+              title="d20 + modifier for everyone">Roll all</button>
+      <button class="btn btn--sm btn--primary" data-init-toggle type="button">
+        Start combat
+      </button>
+      <button class="btn btn--sm btn--ghost btn--danger" data-init-clear
+              type="button">Clear</button>
+    </div>
+  {% endif %}
+</aside>

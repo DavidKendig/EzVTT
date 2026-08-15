@@ -8,6 +8,7 @@
 import { Board } from "./board.js";
 import { ChatPanel } from "./chat.js";
 import { Codex } from "./codex.js";
+import { InitiativePanel } from "./initiative.js";
 import { TableSocket } from "./ws.js";
 
 const board = new Board(document.getElementById("board-canvas"));
@@ -16,6 +17,17 @@ const chatPanel = new ChatPanel(document.getElementById("chat-panel"), socket);
 const codex = new Codex(document.getElementById("codex-panel"), {
   me: Number(document.body.dataset.userId) || null,
 });
+const initiativePanel = new InitiativePanel(
+  document.getElementById("initiative-panel"), socket,
+);
+
+// Read-only, and only while a fight is running: the panel hides itself. A
+// concealed entry never arrives here at all, so there is nothing to filter.
+initiativePanel.addEventListener("change", () => {
+  board.setCurrentToken(initiativePanel.currentTokenId);
+});
+
+socket.addEventListener("initiative", (e) => initiativePanel.apply(e.detail.initiative));
 
 const empty = document.getElementById("board-empty");
 const name = document.getElementById("active-map-name");
@@ -30,6 +42,7 @@ socket.addEventListener("state", (event) => {
   board.setTokens(event.detail.state.tokens || []);
   empty.hidden = Boolean(map);
   name.textContent = map ? map.name : "Waiting for the GM";
+  initiativePanel.apply(event.detail.state.initiative);
 });
 
 socket.addEventListener("grid", (event) => board.setGrid(event.detail.grid));

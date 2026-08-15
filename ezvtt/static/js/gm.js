@@ -4,6 +4,7 @@ import { AssetPanel } from "./assets-panel.js";
 import { Board } from "./board.js";
 import { ChatPanel } from "./chat.js";
 import { Codex } from "./codex.js";
+import { InitiativePanel } from "./initiative.js";
 import { JoinPanel } from "./join.js";
 import { TableSocket } from "./ws.js";
 
@@ -15,6 +16,9 @@ const assetPanel = new AssetPanel(document.getElementById("asset-panel"));
 const chatPanel = new ChatPanel(document.getElementById("chat-panel"), socket);
 const joinPanel = new JoinPanel(document.getElementById("join-panel"));
 const codex = new Codex(document.getElementById("codex-panel"), { me: currentUserId });
+const initiativePanel = new InitiativePanel(
+  document.getElementById("initiative-panel"), socket,
+);
 
 const el = (id) => document.getElementById(id);
 
@@ -112,6 +116,7 @@ function applyState(state) {
 
   if (state.library) renderLibrary(state.library, activeMap?.id);
   if (state.scenes) renderScenes(state.scenes);
+  if (state.initiative) initiativePanel.apply(state.initiative);
   syncTokenPanel();
 }
 
@@ -644,9 +649,29 @@ ui.playerView.addEventListener("change", () => {
   board.fogOpacity = ui.playerView.checked ? 1 : 0.55;
 });
 
+// ------------------------------------------------------------ initiative --
+
+/* "Add tokens" means every creature on the board. Objects and scenery are on
+ * their own layers and have no turn; the server skips anything already in the
+ * order, so clicking it twice after dropping two more goblins is safe. */
+initiativePanel.addEventListener("add-tokens", () => {
+  const creatures = board.tokens.filter((t) => t.layer === "token").map((t) => t.id);
+  if (creatures.length === 0) {
+    toast("Put some creatures on the board first.", "error");
+    return;
+  }
+  socket.send("initiative.add", { token_ids: creatures });
+});
+
+initiativePanel.addEventListener("change", () => {
+  board.setCurrentToken(initiativePanel.currentTokenId);
+});
+
 // ----------------------------------------------------------------- socket --
 
 socket.addEventListener("state", (e) => applyState(e.detail.state));
+
+socket.addEventListener("initiative", (e) => initiativePanel.apply(e.detail.initiative));
 
 socket.addEventListener("fog", (e) => {
   board.setFog({ cols: e.detail.cols, rows: e.detail.rows, cells: e.detail.cells });

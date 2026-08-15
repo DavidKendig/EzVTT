@@ -527,6 +527,126 @@ code, kbd {
   pointer-events: none;   /* never blocks a drag-and-drop onto the board */
 }
 
+/* --------------------------------------------------------- initiative - */
+/* Floats over the board rather than living in the sidebar: on the GM screen it
+   sits beside the fight it describes, and the player view and the projector
+   have no sidebar to put it in. It appears for those two only while a combat is
+   running -- an empty tracker over the map is chrome nobody asked for. */
+
+.initiative {
+  position: absolute;
+  top: 12px;
+  left: 12px;
+  z-index: 5;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  width: 250px;
+  max-height: calc(100% - 24px);
+  padding: 8px;
+  font-size: .86rem;
+  background: color-mix(in srgb, var(--surface-1) 92%, transparent);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-2);
+}
+
+.initiative[hidden] { display: none; }
+
+.initiative--gm { width: 340px; }
+
+/* Fixed, not absolute: the display window's canvas is itself fixed and there is
+   no positioned board element around it. */
+.initiative--display {
+  position: fixed;
+  width: auto;
+  min-width: 220px;
+  max-width: 320px;
+  font-size: 1.05rem;
+}
+
+.initiative__head { display: flex; align-items: center; gap: 6px; }
+
+.initiative__round {
+  font-weight: 600;
+  color: var(--text-0);
+  letter-spacing: .02em;
+}
+
+.initiative__list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: 0;
+  padding: 0;
+  overflow-y: auto;
+  list-style: none;
+}
+
+.initiative__entry {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 6px;
+  border: 1px solid transparent;
+  border-radius: 4px;
+}
+
+.initiative--gm .initiative__entry { cursor: pointer; }
+.initiative--gm .initiative__entry:hover { background: var(--surface-2); }
+
+/* Green rather than the brass accent: the accent already means "selected", and
+   a GM needs to tell the token they are editing from the one that is acting. */
+.initiative__entry--current {
+  background: color-mix(in srgb, var(--success) 18%, var(--surface-2));
+  border-color: color-mix(in srgb, var(--success) 55%, transparent);
+}
+
+/* Concealed from players, shown dimmed to the GM -- the same treatment a hidden
+   token gets on the board. It never reaches a player's browser at all. */
+.initiative__entry--hidden { opacity: .55; }
+
+.initiative__value {
+  min-width: 2.2em;
+  text-align: right;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  color: var(--accent);
+}
+
+.initiative__name {
+  flex: 1 1 auto;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text-0);
+}
+
+.initiative__actions { display: flex; align-items: center; gap: 2px; }
+
+.initiative__actions .btn {
+  padding: 1px 5px;
+  font-size: .72rem;
+}
+
+.initiative__score,
+.initiative__mod {
+  width: 3.4em;
+  flex: 0 0 auto;
+  padding: 1px 4px;
+  font-size: .78rem;
+}
+
+.initiative__empty { margin: 0; font-size: .78rem; color: var(--text-2); }
+
+.initiative__foot { display: flex; flex-wrap: wrap; gap: 4px; }
+
+/* A player on a phone is looking at their corner of the map, not at a panel
+   taking half of it. */
+@media (max-width: 640px) {
+  .initiative--play { width: 46vw; font-size: .78rem; }
+}
+
 /* ------------------------------------------------------- gate (setup/login) - */
 
 .gate {

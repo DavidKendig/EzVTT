@@ -272,6 +272,31 @@ class Hub:
             (c, {"type": "state", "state": player_state}) for c in players
         ])
 
+    async def broadcast_initiative(self, scene_id: int) -> None:
+        """Push the turn order.
+
+        Built twice, once per audience, for the same reason snapshots are: a
+        concealed entry must be absent from a player's copy rather than filtered
+        out of it after the fact. The display window authenticates as the GM and
+        therefore receives the GM's copy -- it drops concealed entries itself,
+        exactly as it already does with hidden tokens.
+        """
+        from . import initiative
+
+        async with self._lock:
+            targets = list(self.connections)
+        if not targets:
+            return
+
+        gm_view = initiative.get(scene_id, for_gm=True)
+        player_view = initiative.get(scene_id, for_gm=False)
+
+        await self.deliver([
+            (c, {"type": "initiative",
+                 "initiative": gm_view if c.is_gm else player_view})
+            for c in targets
+        ])
+
     async def broadcast_presence(self) -> None:
         async with self._lock:
             gms = sum(1 for c in self.connections if c.is_gm and c.surface != "display")
@@ -449,7 +474,14 @@ async def _update_token(hub: Hub, connection: Connection, payload: dict[str, Any
     # cannot be sent as an ordinary delta -- players who should no longer see it
     # need a removal, and players newly allowed to see it need the whole token.
     if before["hidden"] != token["hidden"]:
+        from . import initiative
+
+        # The tracker follows the token. Otherwise a GM who hides the ambush
+        # again leaves its name sitting in the players' turn order.
+        scene_id = initiative.sync_token_visibility(token_id, token["hidden"])
         await hub.broadcast_token_visibility(token)
+        if scene_id is not None:
+            await hub.broadcast_initiative(scene_id)
     else:
         await hub.broadcast_token(token, "token.changed")
 
@@ -459,10 +491,16 @@ async def _delete_token(hub: Hub, connection: Connection, payload: dict[str, Any
     if not isinstance(token_id, int):
         raise ValueError("token_id is required.")
 
+    before = state.get_token(token_id)
     if not state.delete_token(token_id):
         raise ValueError("That token no longer exists.")
 
     await hub.broadcast({"type": "token.removed", "token_id": token_id})
+
+    # The token's initiative row cascaded away with it -- most often because the
+    # creature whose turn it was just died. Resend the order so the table sees
+    # the turn hand on rather than a tracker pointing at nothing.
+    await hub.broadcast_initiative(before["scene_id"])
 
 
 async def _clear_tokens(hub: Hub, connection: Connection, payload: dict[str, Any]) -> None:
@@ -505,6 +543,117 @@ async def _fog_all(hub: Hub, connection: Connection, payload: dict[str, Any]) ->
 
     state_after = fog.set_all(_require_scene(), bool(payload.get("revealed", True)))
     await hub.broadcast_fog(state_after)
+
+
+# --------------------------------------------------------------------------- #
+# Initiative intents
+# --------------------------------------------------------------------------- #
+
+def _entry_id(payload: dict[str, Any]) -> int:
+    entry_id = payload.get("entry_id")
+    if not isinstance(entry_id, int):
+        raise ValueError("entry_id is required.")
+    return entry_id
+
+
+async def _initiative_add(hub: Hub, connection: Connection, payload: dict[str, Any]) -> None:
+    """Add named entries, tokens, or both."""
+    from . import initiative
+
+    scene_id = _require_scene()
+
+    token_ids = payload.get("token_ids")
+    if isinstance(token_ids, list):
+        initiative.add_tokens(scene_id, [t for t in token_ids if isinstance(t, int)])
+
+    label = payload.get("label")
+    if isinstance(label, str) and label.strip():
+        initiative.add(
+            scene_id, label,
+            value=float(payload.get("value", 0)),
+            modifier=int(payload.get("modifier", 0)),
+            hidden=bool(payload.get("hidden", False)),
+        )
+
+    await hub.broadcast_initiative(scene_id)
+
+
+async def _initiative_update(hub: Hub, connection: Connection, payload: dict[str, Any]) -> None:
+    from . import initiative
+
+    entry_id = _entry_id(payload)
+    scene_id = initiative.scene_of(entry_id)
+    if scene_id is None:
+        raise ValueError("That entry is no longer in the order.")
+
+    changes = {k: v for k, v in payload.items() if k != "entry_id"}
+    initiative.update(entry_id, **changes)
+    await hub.broadcast_initiative(scene_id)
+
+
+async def _initiative_remove(hub: Hub, connection: Connection, payload: dict[str, Any]) -> None:
+    from . import initiative
+
+    entry_id = _entry_id(payload)
+    scene_id = initiative.scene_of(entry_id)
+    if scene_id is None or not initiative.remove(entry_id):
+        raise ValueError("That entry is no longer in the order.")
+
+    await hub.broadcast_initiative(scene_id)
+
+
+async def _initiative_clear(hub: Hub, connection: Connection, payload: dict[str, Any]) -> None:
+    from . import initiative
+
+    scene_id = _require_scene()
+    initiative.clear(scene_id)
+    await hub.broadcast_initiative(scene_id)
+
+
+async def _initiative_roll(hub: Hub, connection: Connection, payload: dict[str, Any]) -> None:
+    """Roll d20 + modifier. One entry, or the whole order.
+
+    Only the request crosses the socket; the dice are thrown here. There is
+    nowhere in this payload to put a result. See ADR-004.
+    """
+    from . import initiative
+
+    scene_id = _require_scene()
+    entry_id = payload.get("entry_id")
+    initiative.roll(scene_id, entry_id if isinstance(entry_id, int) else None)
+    await hub.broadcast_initiative(scene_id)
+
+
+async def _initiative_start(hub: Hub, connection: Connection, payload: dict[str, Any]) -> None:
+    from . import initiative
+
+    scene_id = _require_scene()
+    initiative.start(scene_id)
+    await hub.broadcast_initiative(scene_id)
+
+
+async def _initiative_stop(hub: Hub, connection: Connection, payload: dict[str, Any]) -> None:
+    from . import initiative
+
+    scene_id = _require_scene()
+    initiative.stop(scene_id)
+    await hub.broadcast_initiative(scene_id)
+
+
+async def _initiative_advance(hub: Hub, connection: Connection, payload: dict[str, Any]) -> None:
+    from . import initiative
+
+    scene_id = _require_scene()
+    initiative.advance(scene_id, int(payload.get("delta", 1)))
+    await hub.broadcast_initiative(scene_id)
+
+
+async def _initiative_jump(hub: Hub, connection: Connection, payload: dict[str, Any]) -> None:
+    from . import initiative
+
+    scene_id = _require_scene()
+    initiative.jump(scene_id, _entry_id(payload))
+    await hub.broadcast_initiative(scene_id)
 
 
 # --------------------------------------------------------------------------- #
@@ -590,6 +739,15 @@ _GM_INTENTS = {
     "fog.paint": _fog_paint,
     "fog.rect": _fog_rect,
     "fog.all": _fog_all,
+    "initiative.add": _initiative_add,
+    "initiative.update": _initiative_update,
+    "initiative.remove": _initiative_remove,
+    "initiative.clear": _initiative_clear,
+    "initiative.roll": _initiative_roll,
+    "initiative.start": _initiative_start,
+    "initiative.stop": _initiative_stop,
+    "initiative.advance": _initiative_advance,
+    "initiative.jump": _initiative_jump,
 }
 
 
