@@ -8,6 +8,44 @@ without reading the codebase.
 
 ---
 
+## Start here
+
+**State at 2026-08-13.** Phases 0–7 done. Phases 8–10 remain.
+
+| | |
+|---|---|
+| Branch | `rewrite/fastapi-vtt`, everything committed and pushed |
+| PR | [#1](https://github.com/DavidKendig/EzVTT/pull/1) — 3 commits, open, not merged |
+| `main` | still the original Java/Django prototype; the PR replaces it |
+| Tests | **450**, all passing |
+| Lint | `ruff check .` clean |
+
+```bash
+.\scripts\setup.ps1                       # once
+.\start.bat                               # or: .\scripts\start.ps1 --mode lan
+.venv\Scripts\python -m pytest
+.venv\Scripts\python -m ruff check .
+```
+
+**What works end to end:** maps with a live grid slider · 800 Cartos assets with
+footprints parsed from filenames · tokens on three layers · accounts with a
+forced first-run admin · fog that removes concealed pixels server-side · chat
+with server-rolled dice and private rolls · join-by-QR · a campaign wiki that
+shares nothing until you tick a folder.
+
+**Next:** Phase 8, quality of life — see the bottom of this file.
+
+**Two things a cold session should not "fix":**
+
+1. `codex.js` sets `innerHTML` from `/api/vault/note` on purpose. That HTML is
+   sanitised server-side through a tag allow-list; escaping it again shows every
+   note as raw markup.
+2. `scripts/stop.ps1` sends a console control event from a child process rather
+   than calling `taskkill`. Windows has no SIGTERM for console apps, and doing
+   the console dance inline breaks the calling shell.
+
+---
+
 ## Session 6 — 2026-08-13 · Phase 5 complete · **chat and dice**
 
 **Where the project stands:** six phases done. A GM can put a map down, line up
