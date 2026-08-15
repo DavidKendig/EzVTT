@@ -9,7 +9,10 @@
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='6' fill='%230d1014'/><path d='M8 8h16M8 16h16M8 24h16M8 8v16M16 8v16M24 8v16' stroke='%23d9a441' stroke-width='2' fill='none'/></svg>">
   {% block head %}{% endblock %}
 </head>
-<body>
+{# The signed-in user's id, so the notes panel can tell which notes are the
+   viewer's own to edit. Not a secret -- authority always comes from the session
+   cookie server-side, never from this value. #}
+<body data-user-id="{{ principal.user_id if principal.user_id is not none else '' }}">
   <div class="app">
     {% if bypass_active %}
       {# Deliberately loud. An unauthenticated GM session must never be mistaken

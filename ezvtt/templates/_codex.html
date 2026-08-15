@@ -1,0 +1,42 @@
+{# The campaign wiki and player notes, shared by the GM screen and the player
+   view. Docked left, mirroring chat on the right.
+
+   Not included in display.html: the shared monitor stays chrome-free. #}
+<aside class="codex codex--collapsed" id="codex-panel">
+  <button class="codex__toggle" data-codex-toggle type="button"
+          title="Show or hide the campaign wiki and your notes"
+          aria-label="Show or hide the campaign wiki and your notes"></button>
+
+  <div class="codex__inner">
+    <div class="codex__tabs" role="tablist">
+      <button class="codex__tab codex__tab--active" data-codex-tab="wiki"
+              type="button" role="tab">Wiki</button>
+      <button class="codex__tab" data-codex-tab="notes"
+              type="button" role="tab">Notes</button>
+    </div>
+
+    {# ------------------------------------------------------------- wiki -- #}
+    <section class="codex__pane" data-codex-pane="wiki">
+      <input class="input input--sm" type="search" data-wiki-search
+             placeholder="Search the wiki&hellip;" aria-label="Search the wiki">
+
+      <div class="codex__scroll" data-wiki-body></div>
+    </section>
+
+    {# ------------------------------------------------------------ notes -- #}
+    <section class="codex__pane" data-codex-pane="notes" hidden>
+      <div class="row" style="gap:4px">
+        <button class="btn btn--sm btn--primary" data-note-new type="button">
+          New note
+        </button>
+        <select class="input input--sm" data-note-filter aria-label="Show">
+          <option value="all">All I can see</option>
+          <option value="mine">Only mine</option>
+          <option value="public">The shared board</option>
+        </select>
+      </div>
+
+      <div class="codex__scroll" data-notes-body></div>
+    </section>
+  </div>
+</aside>

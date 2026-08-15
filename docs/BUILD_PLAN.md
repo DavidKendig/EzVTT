@@ -143,15 +143,21 @@ Scaffolding, licensing, and the skeleton everything else hangs off.
 
 ---
 
-## Phase 7 — Obsidian vault and player notes `[ ]`
+## Phase 7 — Obsidian vault and player notes `[x]`
 
-- [ ] Configure a local vault path
-- [ ] Read-only Markdown rendering: `[[wikilinks]]`, `![[embeds]]`, frontmatter
-- [ ] Folder tree and search
-- [ ] Path-traversal guarded, confined to the vault root
-- [ ] **Folder allow-list** — a raw vault is full of GM spoilers
-- [ ] Player notes: private per-user, plus a shared public board
-- [ ] **Verify:** `../../` is rejected; non-allow-listed folders are invisible to players
+- [x] Configure a local vault path
+- [x] Read-only Markdown rendering: `[[wikilinks]]`, `![[embeds]]`, frontmatter
+- [x] Folder tree and search
+- [x] Path-traversal guarded, confined to the vault root
+- [x] **Folder allow-list, denying by default** — a raw vault is full of GM spoilers
+- [x] **HTML sanitising** — a note pasted from a web page cannot script a player's browser
+- [x] Player notes: private per-user, a GM-visible tier, and a shared board
+- [x] **Verified:** ten traversal attempts refused; search never crosses the
+      allow-list; a forbidden note and a nonexistent one give the *same* error
+- [x] Wiki and notes panels on `/` and `/play` — a left-docked drawer mirroring
+      chat, with folder tree, search, and wikilink navigation
+- [x] Admin vault configuration with folder tick-boxes, where "nothing shared"
+      is stated in warning colour rather than looking like a broken wiki
 
 ---
 

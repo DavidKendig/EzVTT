@@ -3,14 +3,18 @@
 import { AssetPanel } from "./assets-panel.js";
 import { Board } from "./board.js";
 import { ChatPanel } from "./chat.js";
+import { Codex } from "./codex.js";
 import { JoinPanel } from "./join.js";
 import { TableSocket } from "./ws.js";
+
+const currentUserId = Number(document.body.dataset.userId) || null;
 
 const board = new Board(document.getElementById("board-canvas"), { editable: true });
 const socket = new TableSocket("gm");
 const assetPanel = new AssetPanel(document.getElementById("asset-panel"));
 const chatPanel = new ChatPanel(document.getElementById("chat-panel"), socket);
 const joinPanel = new JoinPanel(document.getElementById("join-panel"));
+const codex = new Codex(document.getElementById("codex-panel"), { me: currentUserId });
 
 const el = (id) => document.getElementById(id);
 

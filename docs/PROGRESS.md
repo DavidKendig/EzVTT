@@ -77,6 +77,96 @@ a check that every face of a d6 actually appears.
 
 ---
 
+## Session 8 — 2026-08-13 · Phase 7 complete · **the vault, deny by default**
+
+**Where the project stands:** eight phases. The campaign wiki and player notes
+are usable from both the GM screen and the player view, and the vault's
+containment is verified end to end.
+
+### The panels
+
+A left-docked drawer mirroring chat on the right, with **Wiki** and **Notes**
+tabs, shared by `/` and `/play` and absent from `/display`. It starts collapsed
+and loads the tree on first open — a GM who never opens the wiki should not pay
+for walking their vault.
+
+Confirmed in the browser as both audiences:
+
+| | GM | player-one |
+|---|---|---|
+| folders | GM Only, Handouts, Lore | **Handouts, Lore** |
+| notes | 5 including *Secret Root Note* | **3** |
+| search "Marcus" | hits | **none** |
+| panel text mentions "GM Only" | — | **no** |
+
+Notes render as real elements, not escaped markup, and `[[wikilinks]]` navigate
+without a page load. The admin screen states *"Players can currently see
+nothing"* in warning colour when the allow-list is empty, so a GM who ticks
+nothing understands that is the design rather than a broken wiki.
+
+**One thing the client must keep doing:** set `innerHTML` from
+`/api/vault/note`, not `textContent`. The HTML is sanitised server-side through
+a tag allow-list before it is sent; escaping it again would show every note as
+its own markup.
+
+### The rule the whole feature rests on
+
+A campaign vault holds the players' handouts and the GM's plot outline in the
+same folder tree, often under names like *"Session 12 - the traitor is
+Marcus.md"*. So: **nothing is visible until the GM ticks a folder.** Pointing
+EzVTT at a vault shares none of it.
+
+Three independent guards, because any one failing alone should not leak:
+
+1. `media.resolve_within` confines every path to the vault root
+2. The **resolved** path is re-checked against the allow-list, so a symlink that
+   escapes the root or points at an unlisted folder is refused even though it
+   resolved cleanly
+3. Rendered HTML is sanitised through a tag/attribute allow-list
+
+Two smaller decisions that matter as much:
+
+- **A forbidden note and a nonexistent one give the identical error.** Saying
+  "forbidden" for one and "not found" for the other tells a player exactly which
+  secrets exist to go looking for.
+- **A wikilink to a note the reader may not see renders as plain text**, not a
+  dead link — otherwise a player maps the GM's folder names by collecting broken
+  references.
+
+### Shipped
+
+- **`ezvtt/vault.py`** — config, allow-list, tree, search, Markdown rendering
+  with wikilinks/embeds/frontmatter, and an HTML sanitiser
+- **`ezvtt/notes.py`** — private / GM-visible / public notes
+- **`ezvtt/routes/wiki.py`** — `/api/vault/*` and `/api/notes/*`
+
+### Verified
+
+**24 live checks against a running server**, all passing — including **ten
+traversal attempts**: `../`, `../../etc/passwd`, `Handouts/../GM Only/…`, dot
+segments, absolute POSIX and Windows paths, backslashes, and URL-encoded
+escapes. Every one 404s with nothing leaked. Search returns two hits for the GM
+and **zero** for a player. Anonymous gets 401 everywhere.
+
+**450 tests, ruff clean** (vault 58, notes 14 added).
+
+### A real bug in my own sanitiser
+
+The first `SAFE_URL_RE` was written as "starts with a safe character" and ended
+in `[\w./~-]` — which matches the `j` of `javascript:` and the `d` of `data:`.
+It permitted **every scheme it existed to block**. Rewritten as an explicit
+scheme allow-list that also strips the tab and newline characters browsers
+ignore before parsing a scheme, so `java&#9;script:` is caught too. Sixteen
+scheme cases are now pinned by test.
+
+Ruff also flagged `"author" in row.keys()` and suggested dropping `.keys()`.
+**Applying that would have introduced a bug** — `row` is a `sqlite3.Row`, where
+`in` tests *values*, not keys, so the check would have silently become `False`.
+Verified empirically before changing it, then removed the conditional entirely
+since every caller selects `author`.
+
+---
+
 ## Session 7 — 2026-08-13 · Phase 6 complete · **join by QR**
 
 **Where the project stands:** seven phases. A player joins by pointing a phone
@@ -187,23 +277,25 @@ the fail-closed path finding 3 added.
 
 ---
 
-## → Next step: Phase 7 — Obsidian vault and player notes
+## → Next step: Phase 8 — Quality of life
 
-1. `ezvtt/vault.py` — point at a local vault path; read-only Markdown render of
-   `.md` with `[[wikilinks]]`, `![[embeds]]`, and frontmatter. **Path-traversal
-   guarded and confined to the vault root** — reuse `media.resolve_within`,
-   which already has the tests for it.
-2. **A folder allow-list.** This is the important one: a raw campaign vault is
-   full of GM notes, and one click from a player's screen to your plot outline
-   would be worse than no wiki at all. Default to nothing shared.
-3. Folder tree and search in a player-facing panel.
-4. Player notes: private per-user plus a shared board, persisted in the `notes`
-   table that already exists.
+Everything a GM reaches for mid-session that is currently missing. Roughly in
+order of how often it would be wanted:
 
-**Done when:** a player can read the folders you chose and cannot reach a
-single file outside them, confirmed by asking for `../` and for an
-un-allow-listed path directly.
+1. **Scenes** — prep several encounters and switch with one click. The `scenes`
+   table and `scene_for_map` already exist; what is missing is more than one
+   scene per map and a switcher.
+2. **Initiative tracker** — the `initiative` table exists and is unused.
+3. **Ruler in grid units, and AoE templates** (cone, circle, line).
+4. **Ping** — alt-click a spot and everyone sees it. Small, and the thing that
+   most reduces "no, the *other* door".
+5. **Grid auto-detect** from the map image. The single biggest win for the
+   under-a-minute promise, and the fiddliest to get right.
+6. Token HP bars and condition markers; undo/redo; handout push; campaign
+   export.
+
+**Then Phase 9** (packaging — must run `scripts/gen_third_party_licenses.py`,
+since bundled builds do redistribute the dependencies) and **Phase 10** (SRD).
 
 **Still open before 1.0:** no rate limiting on `/login`; chat history is global
-rather than per campaign; the packaging phase must run
-`scripts/gen_third_party_licenses.py`.
+rather than per campaign.

@@ -7,11 +7,15 @@
 
 import { Board } from "./board.js";
 import { ChatPanel } from "./chat.js";
+import { Codex } from "./codex.js";
 import { TableSocket } from "./ws.js";
 
 const board = new Board(document.getElementById("board-canvas"));
 const socket = new TableSocket("play");
 const chatPanel = new ChatPanel(document.getElementById("chat-panel"), socket);
+const codex = new Codex(document.getElementById("codex-panel"), {
+  me: Number(document.body.dataset.userId) || null,
+});
 
 const empty = document.getElementById("board-empty");
 const name = document.getElementById("active-map-name");
