@@ -347,7 +347,12 @@ async function uploadFiles(files) {
         toast(data.error || "Upload failed.", "error");
         continue;
       }
-      toast(`${data.map.name} is on the table.`, "success");
+      toast(
+        data.detected
+          ? `${data.map.name} is on the table, grid and all.`
+          : `${data.map.name} is on the table — drag the slider to match its squares.`,
+        "success",
+      );
     } catch {
       toast("Upload failed - is the server still running?", "error");
     }
@@ -416,6 +421,25 @@ ui.colour.addEventListener("input", () => pushGrid({ color: ui.colour.value }));
 ui.visible.addEventListener("change", () => pushGrid({ visible: ui.visible.checked }));
 
 el("grid-fit").addEventListener("click", () => board.fitToView());
+
+/* "Not detected" is an ordinary answer, not a failure: plenty of good
+ * battlemaps have no grid drawn on them at all. */
+el("grid-detect").addEventListener("click", async () => {
+  if (!activeMap) return;
+  toast("Reading the grid off the artwork...");
+
+  const response = await fetch(`/api/maps/${activeMap.id}/detect-grid`, { method: "POST" });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    toast(data.error || "Could not read that map.", "error");
+    return;
+  }
+  if (!data.detected) {
+    toast("No grid drawn on this map — set the size by hand.", "error");
+    return;
+  }
+  toast(`Grid found: ${data.map.grid.size_px} px a square.`, "success");
+});
 el("clear-table").addEventListener("click", () => {
   if (confirm("Take the map off the table? It stays in your library.")) {
     socket.send("table.clear");

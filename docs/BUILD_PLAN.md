@@ -172,7 +172,8 @@ Scaffolding, licensing, and the skeleton everything else hangs off.
       local to whoever drags it, templates are shared table state
 - [x] Alt-click **ping** visible to everyone — players too, rate-limited, and
       never delivered onto ground a player has not revealed
-- [ ] **Grid auto-detect** from the map image
+- [x] **Grid auto-detect** from the map image — automatic on upload, silent
+      when the map has no grid drawn on it
 - [ ] Undo/redo for GM board edits
 - [ ] Token HP bars and condition markers
 - [ ] Handout push — show an image to players

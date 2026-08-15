@@ -11,14 +11,14 @@ without reading the codebase.
 ## Start here
 
 **State at 2026-08-15.** Phases 0–7 done. Phase 8 under way: scenes, the
-initiative tracker, measuring, and pointing all ship.
+initiative tracker, measuring, pointing, and **grid auto-detect** all ship.
 
 | | |
 |---|---|
 | Branch | `rewrite/fastapi-vtt`, everything committed and pushed |
 | PR | [#1](https://github.com/DavidKendig/EzVTT/pull/1) — open, not merged |
 | `main` | still the original Java/Django prototype; the PR replaces it |
-| Tests | **566**, all passing |
+| Tests | **588**, all passing |
 | Lint | `ruff check .` clean |
 
 ```bash
@@ -34,11 +34,13 @@ forced first-run admin · fog that removes concealed pixels server-side · chat
 with server-rolled dice and private rolls · join-by-QR · a campaign wiki that
 shares nothing until you tick a folder · several scenes per map, switched with
 one click · an initiative tracker on all three screens · a ruler, and
-fireballs the table can see · **Alt-click to point at something.**
+fireballs the table can see · Alt-click to point at something · **a grid that
+lines itself up on upload.**
 
-**Next:** Phase 8 continues — **grid auto-detect**, the biggest remaining win
-for the under-a-minute promise and the fiddliest to get right. See the bottom
-of this file.
+**Next:** Phase 8's remainder — token HP bars and condition markers, undo/redo,
+handout push, campaign export. None is load-bearing; **Phase 9 (packaging) is
+the more valuable next move** if a release matters more than polish. See the
+bottom of this file.
 
 **Two things a cold session should not "fix":**
 
@@ -48,6 +50,80 @@ of this file.
 2. `scripts/stop.ps1` sends a console control event from a child process rather
    than calling `taskkill`. Windows has no SIGTERM for console apps, and doing
    the console dance inline breaks the calling shell.
+
+---
+
+## Session 13 — 2026-08-15 · Phase 8 · **grid auto-detect**
+
+**Where the project stands:** drop a battlemap with a grid drawn on it and the
+squares already line up. This was the plan's "single biggest win for the
+under-a-minute promise, and the fiddliest to get right", and it is done.
+
+### Shipped
+
+- **`ezvtt/gridfind.py`** — edge profiles per axis, autocorrelation for the
+  spacing, a phase sweep for the offset, both axes required to agree, and a
+  contrast test that separates a drawn line from a texture
+- Detection runs **automatically inside the upload**, in a thread, and the map
+  arrives with its grid already right
+- `POST /api/maps/{id}/detect-grid` and a **Detect grid** button, for maps
+  added before this existed or knocked out of alignment since
+- The upload toast now says which happened: *"…is on the table, grid and all"*
+  or *"…drag the slider to match its squares"*
+
+### The bug that shaped the whole feature
+
+The first version scored the real bundled **Cliff Face** map at 0.41 confidence
+and would have applied a 39px grid to it. That map has **no grid at all** — it
+is dirt and rock, and its texture *tiles*. Autocorrelation cannot tell those
+apart: a tiled texture repeats perfectly and carries no lines whatsoever.
+
+The fix is a second, cheaper test — how much stronger the edges are *on* the
+detected lines than across the map as a whole:
+
+| | contrast |
+|---|---|
+| crisp drawn grid | 15 – 39 |
+| faint grid over heavy clutter | 4.8 |
+| grid softened by resizing and re-encoding | 2.8 |
+| **Cartos gravel texture (no grid)** | **1.01** |
+
+1.01 is exactly what "no lines here" means. Both axes must pass, because a grid
+drawn on one axis is floorboards. Written up as **ADR-015**.
+
+### Why it says nothing rather than guessing
+
+The two failures are not symmetric. Missing a grid costs the GM the slider drag
+they were going to do anyway. Finding one that is not there means the map
+arrives with squares that do not line up and **nothing says so** — they have to
+notice before they know to look. Harmonics get the same treatment: a peak at
+twice the true spacing is folded down, because a grid twice too large looks
+plausible while being silently wrong.
+
+### No new dependency
+
+Pillow's BOX resize collapses an image to one row in C, which is the only
+expensive part; the rest is a few hundred thousand multiply-adds over a list.
+numpy or OpenCV would have been an acknowledgement entry and a Phase 9
+packaging risk for no user-visible gain. See ADR-015 and rule 6 in `CLAUDE.md`.
+
+### Verified, not just written
+
+- **Uploaded a map drawn with a 64px grid at (19, 31)** → it arrived at
+  **64.0 px, (18.57, 30.62)**, `detected: true`, with no GM action at all
+- **Uploaded a gridless map** → `detected: false`, and it kept the 33.3px
+  30-square guess rather than inventing one
+- Knocked a detected grid to 210px/(55,5) and pressed **Detect grid**: back to
+  64/(19,31), toast *"Grid found: 64 px a square."*
+- On the gridless map the same button said *"No grid drawn on this map — set
+  the size by hand"* and **changed nothing**
+- The endpoint is GM-only: player **403**, anonymous **401**, missing map **404**
+- **The event loop stays free**: `/health` answered in **3–6 ms** during a
+  229 ms detection of the 1606×7327 map, against 5 ms idle
+
+**588 tests, ruff clean** — `tests/test_gridfind.py` adds 22, over half of them
+asserting *silence*: gridless clutter, flat artwork, a perfectly tiling texture,
+lines on one axis only, and a thumbnail-sized image.
 
 ---
 
@@ -586,8 +662,7 @@ order of how often it would be wanted:
 2. ~~**Initiative tracker**~~ — done, Session 10.
 3. ~~**Ruler and AoE templates**~~ — done, Session 11.
 4. ~~**Ping**~~ — done, Session 12.
-5. **Grid auto-detect** from the map image. The single biggest win for the
-   under-a-minute promise, and the fiddliest to get right.
+5. ~~**Grid auto-detect**~~ — done, Session 13.
 6. Token HP bars and condition markers; undo/redo; handout push; campaign
    export.
 

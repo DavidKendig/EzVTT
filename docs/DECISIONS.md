@@ -464,3 +464,51 @@ projector is showing the real map with the fog drawn over it, so a marker in a
 concealed corridor is information the GM already has. And `clean_point` refuses
 NaN explicitly, because it survives JSON, compares false against every bound,
 and would be drawn at no position at all on every client that received it.
+
+---
+
+## ADR-015 — Grid detection is autocorrelation over edge profiles, and it says when it does not know
+
+**Date:** 2026-08-15 · **Status:** Accepted
+
+**Decision.** `ezvtt/gridfind.py` reads a map's grid from the artwork using
+Pillow and about two hundred lines of arithmetic: sum the edge strength down
+each column and across each row, autocorrelate each profile to find the
+spacing, sweep the phase to find where the first line sits, and require the two
+axes to agree. It runs automatically on every upload and behind a button
+otherwise. **When it is not confident, it returns None** and the map keeps the
+existing 30-square guess.
+
+**Why this and not OpenCV, or a Hough transform, or numpy.** A drawn grid is
+the most strongly periodic thing on a battlemap, and autocorrelation over a
+one-dimensional profile finds a period in a few hundred thousand multiply-adds
+— 15ms for a typical map, 230ms for a 12-megapixel one, off the event loop. A
+Hough transform would find the lines individually, which is the harder problem
+and the one worth solving only for *rotated* grids; those are rare enough to
+leave. OpenCV is a 60MB wheel and a packaging risk for Phase 9 (ADR-008), and
+numpy is an acknowledgement entry and a second binary dependency, for a
+speed-up on the one part that Pillow's BOX resize already does in C.
+
+**The bug that shaped this.** The first version scored the real bundled
+*Cliff Face* map at 0.41 confidence and would have applied a 39px grid to it.
+That map has no grid at all — it is dirt and rock, and its **texture tiles**.
+Autocorrelation cannot tell those apart: a tiled texture repeats perfectly and
+carries no lines whatsoever. The fix is a second test, `_line_contrast`, asking
+how much stronger the edges are *on* the detected lines than across the map as
+a whole. Drawn grids measure 3 to 39. The gravel measures **1.01** — the same
+as everywhere else, which is exactly what "no lines" means. Both axes must
+pass, because a grid drawn on one axis is floorboards.
+
+**Why silence beats a guess.** The two failures are not symmetric. Missing a
+grid costs the GM the slider drag they were going to do anyway. Finding one
+that is not there means the map arrives with squares that do not line up and
+nothing says so — the GM has to notice before they know to look, which is worse
+than the problem this feature exists to remove. Harmonics get the same
+treatment: a peak at twice the true spacing is folded down, because a grid
+twice too large looks entirely plausible while being silently wrong.
+
+**Consequences.** Detection runs inside the upload request, in a thread —
+measured at 3-6ms for `/health` during a 229ms detection, against 5ms idle.
+Rotated and hex grids are out of scope and simply return None. The confidence
+number is reported to the caller but not shown to the GM: "it found a grid" and
+"it did not" are the only two things they can act on.

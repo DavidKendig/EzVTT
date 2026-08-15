@@ -6,12 +6,13 @@ than trusting the filename or the browser's content type.
 
 from __future__ import annotations
 
+import asyncio
 import logging
 
 from fastapi import APIRouter, Depends, File, Request, UploadFile
 from fastapi.responses import JSONResponse
 
-from .. import config, fog, media, state
+from .. import config, fog, gridfind, media, state
 from ..deps import require_gm
 from ..hub import hub
 
@@ -45,9 +46,21 @@ async def upload_map(request: Request, file: UploadFile = File(...)):
 
     name = media.display_title(file.filename or "Untitled map")
     map_id = state.create_map(stored, name)
+    path = config.MAPS_DIR / stored.filename
 
     # Best effort: a missing thumbnail is cosmetic, never a failed upload.
-    media.ensure_thumbnail(config.MAPS_DIR / stored.filename)
+    media.ensure_thumbnail(path)
+
+    # Read the grid off the artwork before anyone sees the map, so the common
+    # case is that it is already right. Off the event loop: it is tens of
+    # milliseconds on a battlemap and a fifth of a second on a large one, and
+    # every other client is waiting on this loop. A map with no drawn grid
+    # keeps create_map's 30-square guess.
+    guess = await asyncio.to_thread(gridfind.detect, path)
+    if guess is not None:
+        state.update_grid(map_id, **guess.as_changes())
+        log.info("Grid detected on %r: %.1f px (confidence %.2f)",
+                 name, guess.size_px, guess.confidence)
 
     scene_id = state.scene_for_map(map_id)
     state.activate_scene(scene_id)
@@ -55,7 +68,34 @@ async def upload_map(request: Request, file: UploadFile = File(...)):
     log.info("Map %r uploaded (%dx%d)", name, stored.width, stored.height)
     await hub.broadcast_state()
 
-    return {"map": state.get_map(map_id)}
+    return {"map": state.get_map(map_id), "detected": guess is not None}
+
+
+@router.post("/{map_id}/detect-grid")
+async def detect_grid(request: Request, map_id: int):
+    """Re-read the grid from the artwork, for a map already in the library.
+
+    The upload path does this automatically; this is the button for a map that
+    was added before, or one whose grid has since been dragged about.
+    """
+    existing = state.get_map(map_id)
+    if existing is None:
+        return JSONResponse({"error": "No such map."}, status_code=404)
+
+    filename = existing["url"].rsplit("/", 1)[-1]
+    guess = await asyncio.to_thread(gridfind.detect, config.MAPS_DIR / filename)
+    if guess is None:
+        # Not an error. Plenty of good battlemaps have no grid drawn on them,
+        # and saying so is more use than a failure.
+        return {"detected": False, "map": existing}
+
+    state.update_grid(map_id, **guess.as_changes())
+    await hub.broadcast_state()
+    return {
+        "detected": True,
+        "confidence": guess.confidence,
+        "map": state.get_map(map_id),
+    }
 
 
 @router.patch("/{map_id}")
