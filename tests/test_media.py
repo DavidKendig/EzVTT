@@ -6,6 +6,7 @@ bytes rather than mocks.
 """
 
 import io
+import os
 
 import pytest
 from PIL import Image
@@ -141,7 +142,6 @@ def test_display_title_never_empty():
 @pytest.mark.parametrize("attempt", [
     "../secret.db",
     "../../etc/passwd",
-    "..\\..\\evil",
     "/etc/passwd",
     "subdir/../../escape",
     "",
@@ -150,6 +150,25 @@ def test_display_title_never_empty():
 def test_resolve_within_refuses_escapes(tmp_path, attempt):
     with pytest.raises(MediaError):
         media.resolve_within(tmp_path, attempt)
+
+
+def test_a_backslash_path_cannot_escape_on_any_platform(tmp_path):
+    """``..\\..\\evil`` is a traversal on Windows and an ordinary -- if
+    peculiar -- filename on POSIX, where a backslash is not a separator.
+
+    So the assertion is the property that has to hold everywhere: the result
+    never leaves the root. This test used to demand a refusal on every
+    platform, which passed on the machine it was written on and failed the
+    first time CI ran the suite on Linux and macOS.
+    """
+    attempt = "..\\..\\evil"
+
+    if os.name == "nt":
+        with pytest.raises(MediaError):
+            media.resolve_within(tmp_path, attempt)
+    else:
+        resolved = media.resolve_within(tmp_path, attempt)
+        assert resolved.parent == tmp_path.resolve()
 
 
 def test_resolve_within_allows_a_plain_name(tmp_path):
