@@ -1,2 +1,35 @@
-Django>=4.2
-Markdown>=3.5
+# EzVTT runtime dependencies.
+#
+# Deliberately small. Every entry here is a line in the acknowledgements section
+# of README.md, a license section in THIRD_PARTY_LICENSES.md, and a risk to
+# single-file packaging in Phase 9. Adding one is a decision, not a reflex --
+# see docs/DECISIONS.md.
+#
+# Lower bounds, not exact pins: EzVTT is an application people run from source
+# on whatever Python their OS ships, and hard pins cause needless install
+# failures. Exact pins are applied at release time in the packaging phase.
+#
+# Notably absent, on purpose:
+#   bcrypt / argon2  -- password hashing uses stdlib hashlib.scrypt, avoiding a
+#                       compiled dependency that complicates PyInstaller builds.
+#   itsdangerous     -- session cookies are signed with stdlib hmac.
+#   alembic / an ORM -- schema is plain .sql migrations over stdlib sqlite3.
+#   any CSS/JS framework -- EzVTT must work with no internet connection.
+
+# --- Web framework and server -------------------------------------------------
+fastapi>=0.115
+uvicorn>=0.30
+websockets>=13.0
+
+# --- Request handling ---------------------------------------------------------
+python-multipart>=0.0.9      # multipart parsing for map and asset uploads
+
+# --- Templating ---------------------------------------------------------------
+jinja2>=3.1
+
+# --- Media --------------------------------------------------------------------
+pillow>=10.0                 # image dimensions, thumbnails, upload validation
+
+# --- Content ------------------------------------------------------------------
+markdown>=3.5                # Obsidian vault rendering
+qrcode>=7.4                  # join-by-phone QR codes for LAN/hotspot modes

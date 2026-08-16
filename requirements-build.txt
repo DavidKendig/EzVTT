@@ -1,0 +1,7 @@
+# Build-time only. Nothing here ships inside a release, so nothing here is an
+# acknowledgement entry -- unlike requirements.txt, where every line is.
+#
+# Installed by scripts/build.ps1 and scripts/build.sh, and by the release
+# workflow. A GM running EzVTT from source never needs any of it.
+
+pyinstaller>=6.6

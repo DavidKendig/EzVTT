@@ -1,0 +1,38 @@
+{# The second-monitor view. Deliberately does NOT extend base.html: no header,
+   no banner, no chrome of any kind. The whole table is looking at this screen,
+   and every pixel of interface is a pixel of map they cannot see. #}
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="dark">
+  <title>EzVTT Display</title>
+  <link rel="stylesheet" href="/static/css/ezvtt.css">
+</head>
+<body class="display-body">
+
+  <canvas class="board__canvas board--bare" id="board-canvas" hidden></canvas>
+
+  {# The one piece of interface this window earns: whose turn it is. It appears
+     only while a combat is running and disappears with it. #}
+  {% with initiative_variant = "display" %}{% include "_initiative.html" %}{% endwith %}
+
+  <div class="display-idle" id="display-idle">
+    <div class="display-idle__brand"><span>Ez</span>VTT</div>
+    <p class="display-idle__hint">Waiting for the GM to put a map on the table.</p>
+    <p class="display-idle__key">
+      Drag this window to your second monitor and press F11 for fullscreen.
+    </p>
+  </div>
+
+  {# Shown when the socket drops. A map frozen mid-session looks identical to a
+     working one until someone tries to move something. #}
+  <div class="display-offline" id="display-offline" hidden>
+    <span class="status-dot status-dot--lost" aria-hidden="true"></span>
+    Reconnecting&hellip;
+  </div>
+
+  <script type="module" src="/static/js/display.js"></script>
+</body>
+</html>

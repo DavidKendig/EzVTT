@@ -1,0 +1,136 @@
+# Build EzVTT for Windows, macOS, and Linux, and publish the archives.
+#
+# Runs on a v* tag, or by hand for a dry run. Every platform is built on its own
+# runner because PyInstaller bundles the interpreter and libraries of the
+# machine it runs on -- there is no cross-compiling here.
+#
+# Nothing is published that has not started, served a page, and shown its
+# licences on the platform it was built for.
+
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write        # needed to create the release; nothing else
+
+jobs:
+  build:
+    name: ${{ matrix.label }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            label: windows-x64
+            binary: ezvtt.exe
+          - os: macos-latest
+            label: macos-arm64
+            binary: ezvtt
+          - os: ubuntu-22.04
+            label: linux-x64
+            binary: ezvtt
+            # 22.04, not latest: the bundled glibc sets the *oldest* system the
+            # binary will run on, and building on the newest runner quietly
+            # excludes anyone a release or two behind.
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements.txt -r requirements-build.txt
+
+      # Not optional: a bundled build redistributes its dependencies, which
+      # obliges it to carry their licence texts. See ADR-008. The spec refuses
+      # to build without this file.
+      - name: Collect dependency licences
+        run: python scripts/gen_third_party_licenses.py
+
+      - name: Build
+        run: python -m PyInstaller --clean --noconfirm ezvtt.spec
+
+      - name: Smoke test
+        shell: bash
+        run: python scripts/smoke_test.py "dist/${{ matrix.binary }}"
+
+      - name: Package
+        shell: bash
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          [ "$GITHUB_REF_TYPE" = "tag" ] || version="dev-${GITHUB_SHA::7}"
+          name="ezvtt-${version}-${{ matrix.label }}"
+
+          mkdir -p "staging/$name"
+          cp "dist/${{ matrix.binary }}" "staging/$name/"
+          # The licences travel beside the binary as well as inside it: a zip a
+          # GM unpacks should show them without having to run anything.
+          cp LICENSE NOTICE THIRD_PARTY_LICENSES.md README.md "staging/$name/"
+
+          mkdir -p out
+          if [ "${{ runner.os }}" = "Windows" ]; then
+            (cd staging && 7z a -tzip "../out/$name.zip" "$name" >/dev/null)
+          else
+            chmod +x "staging/$name/${{ matrix.binary }}"
+            (cd staging && tar -czf "../out/$name.tar.gz" "$name")
+          fi
+
+          cd out
+          for file in *; do
+            if command -v sha256sum >/dev/null; then
+              sha256sum "$file" > "$file.sha256"
+            else
+              shasum -a 256 "$file" > "$file.sha256"
+            fi
+          done
+          ls -la
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ezvtt-${{ matrix.label }}
+          path: out/*
+          if-no-files-found: error
+
+  publish:
+    name: Publish the release
+    needs: build
+    if: github.ref_type == 'tag'
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Gather the checksums into one file
+        run: |
+          mkdir -p release
+          find artifacts -type f ! -name '*.sha256' -exec cp {} release/ \;
+          cat artifacts/*/*.sha256 | sed 's#.*/##' | sort > release/SHA256SUMS.txt
+          ls -la release
+          cat release/SHA256SUMS.txt
+
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: release/*
+          draft: true            # a human checks the notes before it is public
+          generate_release_notes: true
+          body: |
+            Download the archive for your platform, unpack it, and run `ezvtt`.
+            It needs no installer and no Python.
+
+            Verify your download against `SHA256SUMS.txt`.
+
+            EzVTT keeps its campaign in a `data/` folder created beside the
+            program, so back that up and move it with the executable. Map
+            artwork is installed separately — see the README.

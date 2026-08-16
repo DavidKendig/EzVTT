@@ -1,0 +1,112 @@
+# Tests, lint, and the two things that only break when packaged.
+#
+# The last two jobs exist because Phase 9 found both failure modes the hard way:
+# a licence file generated from a dependency list that had drifted from reality,
+# and a bundle that imported cleanly and then could not serve a single page.
+
+name: CI
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: Tests (${{ matrix.os }}, Python ${{ matrix.python }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+        python: ["3.12"]
+        include:
+          # The floor stated in the README. Worth one job, not nine.
+          - os: ubuntu-latest
+            python: "3.10"
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+          cache: pip
+
+      - name: Install
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements.txt
+          python -m pip install pytest ruff
+
+      - name: Lint
+        run: python -m ruff check .
+
+      - name: Test
+        run: python -m pytest -q
+
+      # No asset bundle here: it is 537 MB of Tom Cartos artwork, fetched by
+      # script and never committed (ADR-003). The suite skips what needs it.
+      - name: Smoke test from source
+        run: python scripts/smoke_test.py -- python -m ezvtt
+
+  licences:
+    name: Dependency licences
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements.txt
+
+      # Generated, not compared: the exact versions differ between this runner
+      # and any given checkout, so a byte comparison would fail for no reason.
+      # What must hold is that every distribution a release carries has a
+      # licence text that can be found -- the script exits non-zero otherwise.
+      - name: Every shipped dependency has a licence
+        run: python scripts/gen_third_party_licenses.py
+
+  build:
+    name: Packaged build (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements.txt -r requirements-build.txt
+
+      - name: Collect dependency licences
+        run: python scripts/gen_third_party_licenses.py
+
+      - name: Build
+        run: python -m PyInstaller --clean --noconfirm ezvtt.spec
+
+      - name: Smoke test the binary
+        shell: bash
+        run: |
+          binary=dist/ezvtt
+          [ "${{ runner.os }}" = "Windows" ] && binary=dist/ezvtt.exe
+          python scripts/smoke_test.py "$binary"
