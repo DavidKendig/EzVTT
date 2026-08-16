@@ -10,8 +10,8 @@ without reading the codebase.
 
 ## Start here
 
-**State at 2026-08-16.** Phases 0–9 **complete**. v0.1.1 is published for
-Windows, macOS, and Linux; Phase 8 has since been finished in full.
+**State at 2026-08-16.** Phases 0–9 **complete**, and **v0.2.0** is
+published for Windows, macOS, and Linux — the whole of Phase 8 plus packaging.
 
 | | |
 |---|---|
@@ -20,7 +20,7 @@ Windows, macOS, and Linux; Phase 8 has since been finished in full.
 | Tests | **711**, all passing on Windows, macOS, and Linux |
 | Lint | `ruff check .` clean |
 | CI | green on 3 platforms, Python 3.10 and 3.12 |
-| Release | **[v0.1.1](https://github.com/DavidKendig/EzVTT/releases/tag/v0.1.1)** — published; three archives + SHA256SUMS |
+| Release | **[v0.2.0](https://github.com/DavidKendig/EzVTT/releases/tag/v0.2.0)** — published; three archives + SHA256SUMS |
 
 ```bash
 .\scripts\setup.ps1                       # once

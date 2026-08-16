@@ -7,5 +7,5 @@ under Tom's Open Map License, and is not covered by the Apache License. Those
 files are read-only: see ADR-005 in docs/DECISIONS.md.
 """
 
-__version__ = "0.1.1"
+__version__ = "0.2.0"
 __all__ = ["__version__"]
