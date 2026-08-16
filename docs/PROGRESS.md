@@ -15,9 +15,8 @@ Windows, macOS, and Linux.
 
 | | |
 |---|---|
-| Branch | `rewrite/fastapi-vtt`, everything committed and pushed |
-| PR | [#1](https://github.com/DavidKendig/EzVTT/pull/1) — open, not merged |
-| `main` | still the original Java/Django prototype; the PR replaces it |
+| Branch | `main` — [PR #1](https://github.com/DavidKendig/EzVTT/pull/1) merged 2026-08-16 |
+| `main` | **is** the rewrite now; the Java/Django prototype is history behind it |
 | Tests | **613**, all passing on Windows, macOS, and Linux |
 | Lint | `ruff check .` clean |
 | CI | green on 3 platforms, Python 3.10 and 3.12 |
@@ -39,11 +38,10 @@ one click · an initiative tracker on all three screens · a ruler, and
 fireballs the table can see · Alt-click to point at something · **a grid that
 lines itself up on upload.**
 
-**Next:** Phase 8's remainder (HP bars, undo/redo, handout push, campaign
-export) or Phase 10 (SRD). **PR #1 is still open — `main` remains the old
-Java/Django prototype**, so anyone landing on the repository's front page sees
-the wrong project. Merging it is the highest-value thing left. See the bottom
-of this file.
+**Next:** Phase 10 (SRD statblocks and a reference panel), or Phase 8's
+remainder (token HP bars and condition markers, undo/redo, handout push,
+campaign export). Neither is load-bearing — EzVTT is releasable as it stands.
+See the bottom of this file.
 
 ```bash
 .\scripts\build.ps1                        # a single-file EzVTT + checksum
@@ -58,6 +56,20 @@ of this file.
 2. `scripts/stop.ps1` sends a console control event from a child process rather
    than calling `taskkill`. Windows has no SIGTERM for console apps, and doing
    the console dance inline breaks the calling shell.
+
+---
+
+## Session 17 — 2026-08-16 · **the rewrite is `main`**
+
+PR #1 merged: 15 commits, all sixteen checks green, no conflicts. `main` is now
+the FastAPI application, and CI is green on it — the Java/Django prototype is
+history behind the merge rather than the thing the front page shows.
+
+Merged rather than squashed. Each commit is a working session with a message
+worth keeping, and `docs/DECISIONS.md` refers to them.
+
+`rewrite/fastapi-vtt` was left in place, locally and on the remote. It costs
+nothing and it is the branch every ADR in this repository was written on.
 
 ---
 
