@@ -10,14 +10,14 @@ without reading the codebase.
 
 ## Start here
 
-**State at 2026-08-16.** Phases 0–9 done. **v0.1.1 is published** for
-Windows, macOS, and Linux.
+**State at 2026-08-16.** Phases 0–9 **complete**. v0.1.1 is published for
+Windows, macOS, and Linux; Phase 8 has since been finished in full.
 
 | | |
 |---|---|
 | Branch | `main` — [PR #1](https://github.com/DavidKendig/EzVTT/pull/1) merged 2026-08-16 |
 | `main` | **is** the rewrite now; the Java/Django prototype is history behind it |
-| Tests | **613**, all passing on Windows, macOS, and Linux |
+| Tests | **692**, all passing on Windows, macOS, and Linux |
 | Lint | `ruff check .` clean |
 | CI | green on 3 platforms, Python 3.10 and 3.12 |
 | Release | **[v0.1.1](https://github.com/DavidKendig/EzVTT/releases/tag/v0.1.1)** — published; three archives + SHA256SUMS |
@@ -38,10 +38,10 @@ one click · an initiative tracker on all three screens · a ruler, and
 fireballs the table can see · Alt-click to point at something · **a grid that
 lines itself up on upload.**
 
-**Next:** Phase 10 (SRD statblocks and a reference panel), or Phase 8's
-remainder (token HP bars and condition markers, undo/redo, handout push,
-campaign export). Neither is load-bearing — EzVTT is releasable as it stands.
-See the bottom of this file.
+**Next:** **Phase 10** — the 5e SRD: statblocks, conditions, and spells under
+CC BY 4.0, a searchable reference panel, and dropping a monster onto the board
+with its statblock attached. It is the last phase in the plan. A v0.2.0 release
+would also be worth cutting: everything since v0.1.1 is unreleased.
 
 ```bash
 .\scripts\build.ps1                        # a single-file EzVTT + checksum
@@ -56,6 +56,86 @@ See the bottom of this file.
 2. `scripts/stop.ps1` sends a console control event from a child process rather
    than calling `taskkill`. Windows has no SIGTERM for console apps, and doing
    the console dance inline breaks the calling shell.
+
+---
+
+## Session 18 — 2026-08-16 · **Phase 8 finished**
+
+The four items left in Phase 8, each verified against a running server and
+committed on its own.
+
+### Token HP and conditions — ADR-017
+
+A bar under the token, badges over it. **Players are sent a bar in quarters and
+never the numbers**: sending `hp/hp_max` tells them the goblin is on 7 of 11,
+and so does sending `0.6363` and letting the client draw it. Four steps carry
+what a glance at a bar tells you, rounded up so a creature on one hit point
+shows a sliver — an empty bar reads as dead. The numbers do go to the player who
+owns the token, because it is their character. Conditions are public: a prone
+goblin is prone in front of everyone.
+
+Health is the first field whose *value* differs between two players, which broke
+an assumption three broadcast paths rested on. `broadcast_state` built one
+player snapshot and fanned it out; `broadcast_token` sent one payload to
+everybody. Both now build per viewer — snapshots memoised by user id, token
+deltas shaped into at most three payloads however large the table.
+
+**Verified live:** goblin at 7/11 → GM saw the numbers, both players saw
+`hp_bar: 3`; at 2/11 → bar 1; hiding the bar left the condition public; Anya saw
+her own token's numbers while the other player saw only its bar; a bogus
+condition was dropped. On the canvas: full → 470 green pixels, 4/11 → 170 amber,
+1/11 → 35 red, a player's `hp_bar: 2` → 235 amber (half the full bar), badges
+drawn as `PR` and `PO`.
+
+### Handouts — ADR-018
+
+A library, one held up at a time, filling every screen at once. It is **not** a
+scene property: showing a letter while switching to the district map should not
+make the letter vanish. The GM's close takes it down for the table; anyone
+else's closes their own copy, and the next thing pushed appears anyway.
+
+**Verified live:** GM, player, and projector all received the same payload;
+hide cleared all three; a player pushing was refused; a player could fetch the
+handout image (200) but not a battlemap (403); anonymous got 401. In the
+browser: click to hold up, click again to put away, a viewer's local close left
+the GM's copy up, and the next push reopened theirs.
+
+### Campaign export and import — ADR-019
+
+One zip: database, maps, uploads, handouts. **Live sessions are stripped** — a
+session token is a credential, and an archive carrying one logs its holder in.
+`VACUUM INTO` rather than a file copy, so the write-ahead log is folded in
+instead of leaving the last few minutes of play behind. Importing **stages** and
+applies on the next start, keeping the old database: there is no honest way to
+replace a SQLite file that open connections are holding.
+
+**Verified live:** a 28.7 MB export, admin-only (player 403), no session token
+anywhere in the bytes; import refused without a CSRF token, staged with one, and
+the live database untouched until a restart — after which the map name reverted
+to the exported value and `ezvtt.db.replaced-20260816-103248` sat beside it.
+Hostile archives naming `../../etc/passwd` are refused by test.
+
+### Undo and redo — ADR-020
+
+Ctrl+Z. A checkpoint is a **snapshot of the scene**, not an inverse of the edit:
+"undo a delete" has to restore id, z, owner, label, hit points, conditions and
+flags, and an inverse that forgets one fails silently weeks later in front of a
+table. Coalesced by label, and the label carries the token id, so a drag is one
+step however many frames it emitted.
+
+**Verified live:** a 30-frame drag undid in **one** step back to x=4.0; undo
+again removed the placement; redo restored it; clearing 19 tokens was taken back
+whole; undoing past the start said *"Nothing to undo."*; a player was refused
+both intents.
+
+### One bug worth remembering
+
+`with sqlite3.connect(...)` commits but does **not** close. The exported copy
+stayed open, and Windows then refused to delete the temporary file — export
+would have failed on the platform most of this program's users are on.
+
+**692 tests, ruff clean** — 79 added across `test_status`, `test_handouts`,
+`test_campaign`, and `test_undo`.
 
 ---
 
