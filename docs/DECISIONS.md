@@ -612,3 +612,44 @@ and `deafened` get DD and DF, because both would otherwise be DE and that is a
 poor thing to be vague about. A token with no hit points set says nothing about
 health at all, which is how the several hundred barrels on a battlemap stay
 quiet.
+
+---
+
+## ADR-018 — A handout is one image, held up to the whole table
+
+**Date:** 2026-08-16 · **Status:** Accepted
+
+**Decision.** Handouts are a small library of images with exactly one "showing"
+at a time, stored as a setting rather than a scene property. Showing one puts it
+full-screen on every surface, the GM's included. The GM's close takes it down
+for everyone; anyone else's closes their own copy, and the next push brings it
+back.
+
+**Why a library rather than a push-and-forget.** The same handout comes back out
+three sessions later. Uploading it again, and hunting the file on disk to do
+that, is exactly the friction this program exists to remove.
+
+**Why one at a time.** Holding something up means holding *one* thing up. Two
+overlays racing each other on a projector is not a feature, and "which of these
+is the table looking at" has to have an answer.
+
+**Why it is not a scene property.** What the table is looking at right now
+outlasts putting a different map down — a GM showing a letter while switching to
+the map of the district should not have the letter vanish underneath them. It
+comes down by a deliberate act.
+
+**Why the GM sees it too.** It is how they know what is on the projector without
+turning round. This is the one thing in EzVTT where every audience is shown
+exactly the same payload, and that is the point of it.
+
+**Why a viewer may close their own copy.** A player who has read the letter
+wants their board back, and asking the GM for permission to stop looking at a
+picture is absurd. The dismissal is per handout, so the next thing pushed
+appears: "I dismissed the previous one" is not an answer to a new one.
+
+**Consequences.** `data/handouts/` is a media root players may read, unlike
+`data/maps/`, which is GM-only because fog depends on it (ADR-011). Showing one
+is therefore a deliberate act of publication, and the only images in it are ones
+a GM uploaded to show. Deleting the handout that is up clears the pointer, and
+`showing()` resolves through `get()` so a pointer left dangling by any other
+route answers "nothing is showing" rather than a broken image on five screens.

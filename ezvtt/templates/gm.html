@@ -148,6 +148,22 @@
     </p>
   </section>
 
+  <section class="sidebar__section" id="handout-panel">
+    <h2 class="sidebar__title">
+      Handouts
+      <button class="btn btn--ghost btn--sm" id="handout-add" type="button"
+              title="Add an image to the library">+ Add</button>
+    </h2>
+
+    <input type="file" id="handout-file" accept="image/*" multiple hidden>
+    <div class="handout-list" id="handout-list"></div>
+
+    <p class="control__hint">
+      Click one to hold it up: it fills every player's screen and the projector
+      until you take it down. Everything stays in the library for next time.
+    </p>
+  </section>
+
   <section class="sidebar__section" id="template-panel" hidden>
     <h2 class="sidebar__title">Measure &amp; templates</h2>
 
@@ -329,6 +345,7 @@
   </div>
 </main>
 
+{% include "_handout.html" %}
 {% include "_codex.html" %}
 {% include "_chat.html" %}
 

@@ -398,6 +398,17 @@ class Hub:
             for c in targets
         ])
 
+    async def broadcast_handout(self) -> None:
+        """Tell every screen what the table is looking at, or that it is nothing.
+
+        One message for everyone, including the GM: holding something up is the
+        one thing here where the whole table sees the same thing, and the GM's
+        own copy is how they know what is on the projector. See ADR-018.
+        """
+        from . import handouts
+
+        await self.broadcast({"type": "handout", "handout": handouts.showing()})
+
     async def broadcast_presence(self) -> None:
         async with self._lock:
             gms = sum(1 for c in self.connections if c.is_gm and c.surface != "display")
@@ -716,6 +727,28 @@ async def _templates_clear(hub: Hub, connection: Connection, payload: dict[str, 
 
 
 # --------------------------------------------------------------------------- #
+# Handout intents
+# --------------------------------------------------------------------------- #
+
+async def _handout_show(hub: Hub, connection: Connection, payload: dict[str, Any]) -> None:
+    from . import handouts
+
+    handout_id = payload.get("handout_id")
+    if not isinstance(handout_id, int):
+        raise ValueError("handout_id is required.")
+
+    handouts.show(handout_id)
+    await hub.broadcast_handout()
+
+
+async def _handout_hide(hub: Hub, connection: Connection, payload: dict[str, Any]) -> None:
+    from . import handouts
+
+    handouts.hide()
+    await hub.broadcast_handout()
+
+
+# --------------------------------------------------------------------------- #
 # Initiative intents
 # --------------------------------------------------------------------------- #
 
@@ -936,6 +969,8 @@ _GM_INTENTS = {
     "template.update": _template_update,
     "template.remove": _template_remove,
     "templates.clear": _templates_clear,
+    "handout.show": _handout_show,
+    "handout.hide": _handout_hide,
     "initiative.add": _initiative_add,
     "initiative.update": _initiative_update,
     "initiative.remove": _initiative_remove,

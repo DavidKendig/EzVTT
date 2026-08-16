@@ -4,6 +4,7 @@ import { AssetPanel } from "./assets-panel.js";
 import { Board } from "./board.js";
 import { ChatPanel } from "./chat.js";
 import { Codex } from "./codex.js";
+import { HandoutOverlay } from "./handouts.js";
 import { InitiativePanel } from "./initiative.js";
 import { JoinPanel } from "./join.js";
 import { TableSocket } from "./ws.js";
@@ -18,6 +19,9 @@ const joinPanel = new JoinPanel(document.getElementById("join-panel"));
 const codex = new Codex(document.getElementById("codex-panel"), { me: currentUserId });
 const initiativePanel = new InitiativePanel(
   document.getElementById("initiative-panel"), socket,
+);
+const handoutOverlay = new HandoutOverlay(
+  document.getElementById("handout-overlay"), socket, { editable: true },
 );
 
 const el = (id) => document.getElementById(id);
@@ -78,6 +82,8 @@ const ui = {
   templateColour: el("template-colour"),
   templateDelete: el("template-delete"),
   templateHide: el("template-hide"),
+  handoutList: el("handout-list"),
+  handoutFile: el("handout-file"),
 };
 
 let activeMap = null;
@@ -139,6 +145,8 @@ function applyState(state) {
   if (state.library) renderLibrary(state.library, activeMap?.id);
   if (state.scenes) renderScenes(state.scenes);
   if (state.initiative) initiativePanel.apply(state.initiative);
+  handoutOverlay.apply(state.handout);
+  renderHandouts();
   syncTokenPanel();
 }
 
@@ -336,6 +344,113 @@ async function deleteScene(scene) {
 }
 
 el("scene-new").addEventListener("click", newScene);
+
+// -------------------------------------------------------------- handouts --
+
+let handoutLibrary = [];
+
+function renderHandouts() {
+  ui.handoutList.replaceChildren();
+
+  if (handoutLibrary.length === 0) {
+    const hint = document.createElement("p");
+    hint.className = "card__hint";
+    hint.textContent = "Nothing here yet. Add a letter, a portrait, a map of the region.";
+    ui.handoutList.append(hint);
+    return;
+  }
+
+  const showingId = handoutOverlay.showing?.id ?? null;
+
+  for (const handout of handoutLibrary) {
+    const item = document.createElement("div");
+    item.className = "map-tile" + (handout.id === showingId ? " map-tile--active" : "");
+
+    const thumb = document.createElement("img");
+    thumb.className = "map-tile__thumb";
+    thumb.src = handout.thumb_url;
+    thumb.alt = "";
+    thumb.loading = "lazy";
+
+    const name = document.createElement("span");
+    name.className = "map-tile__name";
+    // textContent: titles come from uploaded filenames.
+    name.textContent = handout.title;
+
+    const actions = document.createElement("div");
+    actions.className = "map-tile__actions";
+    actions.append(
+      handoutButton("Rename", () => renameHandout(handout)),
+      handoutButton("Delete", () => deleteHandout(handout), "btn--danger"),
+    );
+
+    item.append(thumb, name, actions);
+    item.addEventListener("click", () => {
+      // Clicking the one already up takes it down, which is what a GM reaches
+      // for when the table has finished reading it.
+      socket.send(handout.id === showingId ? "handout.hide" : "handout.show",
+                  { handout_id: handout.id });
+    });
+    ui.handoutList.append(item);
+  }
+}
+
+function handoutButton(label, onClick, extra = "") {
+  const button = document.createElement("button");
+  button.className = `btn btn--ghost btn--sm ${extra}`.trim();
+  button.type = "button";
+  button.textContent = label;
+  button.addEventListener("click", (event) => { event.stopPropagation(); onClick(); });
+  return button;
+}
+
+async function loadHandouts() {
+  const response = await fetch("/api/handouts");
+  if (!response.ok) return;
+  handoutLibrary = (await response.json()).handouts || [];
+  renderHandouts();
+}
+
+async function uploadHandouts(files) {
+  const images = [...files].filter((f) => f.type.startsWith("image/"));
+  for (const file of images) {
+    const body = new FormData();
+    body.append("file", file);
+    toast(`Adding ${file.name}...`);
+    const response = await fetch("/api/handouts", { method: "POST", body });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      toast(data.error || "Could not add that image.", "error");
+      continue;
+    }
+    toast(`${data.handout.title} is in the library.`, "success");
+  }
+  await loadHandouts();
+}
+
+async function renameHandout(handout) {
+  const title = prompt("Rename handout", handout.title);
+  if (title === null || title.trim() === "" || title === handout.title) return;
+
+  await fetch(`/api/handouts/${handout.id}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ title }),
+  });
+  await loadHandouts();
+}
+
+async function deleteHandout(handout) {
+  if (!confirm(`Delete "${handout.title}"? This cannot be undone.`)) return;
+  await fetch(`/api/handouts/${handout.id}`, { method: "DELETE" });
+  await loadHandouts();
+}
+
+el("handout-add").addEventListener("click", () => ui.handoutFile.click());
+ui.handoutFile.addEventListener("change", () => {
+  uploadHandouts(ui.handoutFile.files);
+  ui.handoutFile.value = "";
+});
 
 // ----------------------------------------------------------------- upload --
 
@@ -840,6 +955,11 @@ socket.addEventListener("state", (e) => applyState(e.detail.state));
 
 socket.addEventListener("initiative", (e) => initiativePanel.apply(e.detail.initiative));
 
+socket.addEventListener("handout", (e) => {
+  handoutOverlay.apply(e.detail.handout);
+  renderHandouts();
+});
+
 socket.addEventListener("templates", (e) => {
   board.setTemplates(e.detail.templates);
   syncTemplatePanel();
@@ -906,3 +1026,4 @@ socket.addEventListener("status", (e) => {
 socket.connect();
 assetPanel.init();
 joinPanel.load();
+loadHandouts();

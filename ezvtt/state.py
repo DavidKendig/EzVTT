@@ -653,6 +653,7 @@ def snapshot(for_gm: bool, viewer_id: int | None = None) -> dict[str, Any]:
     at all. See ADR-004 and ADR-011.
     """
     from . import fog as fog_module
+    from . import handouts as handouts_module
     from . import status as status_module
 
     scene = active_scene()
@@ -670,6 +671,9 @@ def snapshot(for_gm: bool, viewer_id: int | None = None) -> dict[str, Any]:
         # duplicated in the client. Sixteen entries of no secrecy whatever, and
         # one place for the names to live.
         "conditions": status_module.CONDITIONS,
+        # What the table is being shown, if anything. Not a scene property:
+        # holding something up outlasts putting a different map down.
+        "handout": handouts_module.showing(),
     }
 
     if scene is None:

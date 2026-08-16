@@ -253,6 +253,7 @@ def media_root(kind: str) -> Path:
         "uploads": config.UPLOADS_DIR,
         "bundled": config.BUNDLED_ASSETS_DIR,
         "thumbs": config.THUMBS_DIR,
+        "handouts": config.HANDOUTS_DIR,
     }
     if kind not in roots:
         raise MediaError(f"Unknown media kind: {kind}")

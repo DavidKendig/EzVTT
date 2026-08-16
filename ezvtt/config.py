@@ -61,6 +61,10 @@ DB_PATH = DATA_DIR / "ezvtt.db"
 MAPS_DIR = DATA_DIR / "maps"
 UPLOADS_DIR = DATA_DIR / "assets"
 THUMBS_DIR = DATA_DIR / "thumbs"
+# Images a GM pushes to the table: a letter, a portrait, a map of the region.
+# Served to any signed-in person, unlike MAPS_DIR -- showing one to the table is
+# the entire point. See ADR-018.
+HANDOUTS_DIR = DATA_DIR / "handouts"
 # Player-visible map composites: the battlemap with unrevealed cells painted
 # out. Players are served these and never the originals in MAPS_DIR, which is
 # what makes fog of war an access-control boundary rather than an overlay.
@@ -73,7 +77,8 @@ PID_FILE = RUN_DIR / "ezvtt.pid"
 # See ADR-005 in docs/DECISIONS.md.
 BUNDLED_ASSETS_DIR = PROJECT_ROOT / "assets" / "bundled"
 
-WRITABLE_DIRS = (DATA_DIR, MAPS_DIR, UPLOADS_DIR, THUMBS_DIR, FOG_DIR, RUN_DIR)
+WRITABLE_DIRS = (DATA_DIR, MAPS_DIR, UPLOADS_DIR, THUMBS_DIR, FOG_DIR,
+                 HANDOUTS_DIR, RUN_DIR)
 
 
 def ensure_directories() -> None:

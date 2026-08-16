@@ -177,7 +177,8 @@ Scaffolding, licensing, and the skeleton everything else hangs off.
 - [ ] Undo/redo for GM board edits
 - [x] Token HP bars and condition markers — players get a bar in quarters and
       never the numbers, unless the token is theirs (ADR-017)
-- [ ] Handout push — show an image to players
+- [x] Handout push — a library, one held up at a time, on every screen at once
+      (ADR-018)
 - [ ] Campaign export/import as a zip
 
 ---

@@ -9,6 +9,7 @@ import { Board } from "./board.js";
 import { ChatPanel } from "./chat.js";
 import { Codex } from "./codex.js";
 import { InitiativePanel } from "./initiative.js";
+import { HandoutOverlay } from "./handouts.js";
 import { TableSocket } from "./ws.js";
 
 const board = new Board(document.getElementById("board-canvas"));
@@ -75,3 +76,11 @@ socket.addEventListener("status", (event) => {
 });
 
 socket.connect();
+
+/* What the GM is holding up. Closing it here closes this copy only; the next
+ * thing they push brings the overlay back. */
+const handoutOverlay = new HandoutOverlay(
+  document.getElementById("handout-overlay"), socket,
+);
+socket.addEventListener("handout", (e) => handoutOverlay.apply(e.detail.handout));
+socket.addEventListener("state", (e) => handoutOverlay.apply(e.detail.state.handout));
