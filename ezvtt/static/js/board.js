@@ -47,6 +47,19 @@ function squaresBetween(a, b) {
   return Math.max(Math.abs(b.x - a.x), Math.abs(b.y - a.y));
 }
 
+/* Exact hit points when the payload carries them, otherwise the coarse bar a
+ * player is sent instead. Null when this token tracks no health at all. */
+function healthFraction(token) {
+  if (token.hp !== null && token.hp !== undefined
+      && token.hp_max !== null && token.hp_max !== undefined && token.hp_max > 0) {
+    return Math.max(0, Math.min(1, token.hp / token.hp_max));
+  }
+  if (token.hp_bar !== null && token.hp_bar !== undefined) {
+    return Math.max(0, Math.min(1, token.hp_bar / 4));
+  }
+  return null;
+}
+
 function round1(value) {
   return Math.round(value * 10) / 10;
 }
@@ -135,6 +148,9 @@ export class Board {
   // never becomes table state at all. See ADR-014.
   #draft = null;
   #ruler = null;
+  // id -> {label, short}, sent with the snapshot so the vocabulary lives in
+  // one place rather than being spelled out again here.
+  #conditions = {};
   // Live pings, dropped as they expire. Never stored anywhere: a ping is a
   // gesture at a shared screen, and it has done its job before anyone could
   // ask what happened to it.
@@ -211,6 +227,12 @@ export class Board {
   #snapValue(value, altKey) {
     if (!this.#snap || altKey) return value;
     return Math.round(value * 2) / 2;
+  }
+
+  /** The condition vocabulary the server sent with the table. */
+  setConditions(vocabulary) {
+    this.#conditions = vocabulary || {};
+    this.invalidate();
   }
 
   /** Mark a spot for a couple of seconds. */
@@ -854,10 +876,80 @@ export class Board {
         this.#drawSelection(ctx, screenX, screenY, width, height);
       }
 
+      // Health under the token, conditions over it: a bar at the feet reads as
+      // part of the creature, and badges over the head do not sit under the
+      // next token along.
+      const barHeight = this.#drawHealth(ctx, token, screenX, screenY, width, height);
+      this.#drawConditions(ctx, token, screenX, screenY, width, cell);
+
       if (token.label && cell > 24) {
-        this.#drawLabel(ctx, token.label, screenX + width / 2, screenY + height);
+        this.#drawLabel(ctx, token.label, screenX + width / 2,
+                        screenY + height + barHeight);
       }
     }
+  }
+
+  /* Green, amber, red. The bar is drawn from whichever of the two the payload
+   * carries: a GM and the token's owner get exact hit points, everyone else
+   * gets the same bar in quarters -- see ADR-017. Returns the height it used,
+   * so the label below knows where it is. */
+  #drawHealth(ctx, token, x, y, width, height) {
+    const fraction = healthFraction(token);
+    if (fraction === null || width < 12) return 0;
+
+    const barHeight = Math.max(3, Math.min(7, height * 0.08));
+    const top = y + height + 1;
+
+    ctx.save();
+    ctx.fillStyle = "rgba(13,16,20,.75)";
+    ctx.fillRect(x, top, width, barHeight);
+    ctx.fillStyle = fraction > 0.5 ? "#57b46b" : (fraction > 0.25 ? "#e0a13c" : "#e05c5c");
+    ctx.fillRect(x, top, width * fraction, barHeight);
+    ctx.strokeStyle = "rgba(0,0,0,.55)";
+    ctx.lineWidth = 1 / this.#dpr;
+    ctx.strokeRect(x + 0.5, top + 0.5, width - 1, barHeight - 1);
+    ctx.restore();
+
+    return barHeight + 2;
+  }
+
+  #drawConditions(ctx, token, x, y, width, cell) {
+    const conditions = token.conditions || [];
+    if (conditions.length === 0 || cell < 18) return;
+
+    const size = Math.max(10, Math.min(20, cell * 0.28));
+    const gap = size * 0.15;
+    let left = x;
+    const top = y - size - 2;
+
+    ctx.save();
+    ctx.font = `600 ${Math.round(size * 0.55)}px system-ui, sans-serif`;
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+
+    for (const id of conditions) {
+      // Wrap rather than run off the token when a creature is having a bad
+      // round: four badges a row, stacked upwards.
+      if (left + size > x + Math.max(width, size * 4)) break;
+
+      ctx.fillStyle = id === "dead" ? "#e05c5c" : "rgba(13,16,20,.88)";
+      ctx.strokeStyle = "#d9a441";
+      ctx.lineWidth = 1 / this.#dpr;
+      ctx.beginPath();
+      // roundRect is recent enough to be worth a fallback, and `?.` would not
+      // do here: it returns undefined either way, so a `??` chain would draw
+      // both shapes.
+      if (ctx.roundRect) ctx.roundRect(left, top, size, size, 3);
+      else ctx.rect(left, top, size, size);
+      ctx.fill();
+      ctx.stroke();
+
+      ctx.fillStyle = "#f2f5f8";
+      ctx.fillText(this.#conditions[id]?.short ?? id.slice(0, 2).toUpperCase(),
+                   left + size / 2, top + size / 2 + 0.5);
+      left += size + gap;
+    }
+    ctx.restore();
   }
 
   /* A solid ring under the selection's dashed one, so a GM can have a creature

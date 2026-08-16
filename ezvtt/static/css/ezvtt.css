@@ -527,6 +527,38 @@ code, kbd {
   pointer-events: none;   /* never blocks a drag-and-drop onto the board */
 }
 
+/* ------------------------------------------------------------ conditions - */
+/* Toggle chips, not a dropdown: a GM marking three goblins prone mid-turn
+   should not be opening a menu. Two-letter codes, with the full name on hover,
+   because that is what fits on the badge over the token too. */
+
+.condition-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(2.6em, 1fr));
+  gap: 3px;
+}
+
+.condition {
+  padding: 3px 0;
+  font: inherit;
+  font-size: .74rem;
+  font-weight: 600;
+  color: var(--text-2);
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  cursor: pointer;
+  transition: background .12s ease, color .12s ease, border-color .12s ease;
+}
+
+.condition:hover { background: var(--surface-hover); color: var(--text-0); }
+
+.condition--on {
+  color: var(--accent-text);
+  background: var(--accent);
+  border-color: var(--accent);
+}
+
 /* --------------------------------------------------------- initiative - */
 /* Floats over the board rather than living in the sidebar: on the GM screen it
    sits beside the fight it describes, and the player view and the projector

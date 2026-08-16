@@ -224,8 +224,8 @@ def test_hidden_tokens_are_absent_from_a_player_listing(table):
     ambush = state.place_token(table["scene_id"], table["asset_id"], 8, 8)
     state.update_token(ambush["id"], hidden=True)
 
-    gm_ids = [t["id"] for t in state.list_tokens(table["scene_id"], include_hidden=True)]
-    player_ids = [t["id"] for t in state.list_tokens(table["scene_id"], include_hidden=False)]
+    gm_ids = [t["id"] for t in state.list_tokens(table["scene_id"], for_gm=True)]
+    player_ids = [t["id"] for t in state.list_tokens(table["scene_id"], for_gm=False)]
 
     assert gm_ids == [visible["id"], ambush["id"]]
     assert player_ids == [visible["id"]]

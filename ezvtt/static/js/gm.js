@@ -64,6 +64,10 @@ const ui = {
   tokenHidden: el("token-hidden"),
   tokenLocked: el("token-locked"),
   tokenDelete: el("token-delete"),
+  tokenHp: el("token-hp"),
+  tokenHpMax: el("token-hp-max"),
+  tokenHpPublic: el("token-hp-public"),
+  tokenConditions: el("token-conditions"),
   tokenCount: el("token-count"),
   templatePanel: el("template-panel"),
   toolCircle: el("tool-circle"),
@@ -78,6 +82,8 @@ const ui = {
 
 let activeMap = null;
 let activeScene = null;
+// id -> {label, short}, sent with the table so the list lives in one place.
+let conditionVocabulary = {};
 let scenes = [];
 // Set while the GM is dragging a slider. Echoes of our own change come back
 // over the socket; applying them to the input would fight the drag.
@@ -102,6 +108,10 @@ function applyState(state) {
   board.setMap(activeMap);
   board.setTokens(state.tokens || []);
   board.setTemplates(state.templates || []);
+  if (state.conditions) {
+    conditionVocabulary = state.conditions;
+    board.setConditions(state.conditions);
+  }
   board.setFog(state.fog || null);
   ui.empty.hidden = Boolean(activeMap);
   ui.gridPanel.hidden = !activeMap;
@@ -576,6 +586,33 @@ function syncTokenPanel() {
   ui.tokenLayer.value = token.layer;
   ui.tokenHidden.checked = token.hidden;
   ui.tokenLocked.checked = token.locked;
+
+  ui.tokenHp.value = token.hp ?? "";
+  ui.tokenHpMax.value = token.hp_max ?? "";
+  ui.tokenHpPublic.checked = token.hp_public !== false;
+  renderConditions(token);
+}
+
+/* Toggle chips rather than a multi-select: a GM marking three goblins prone
+ * mid-turn should not be opening a dropdown. */
+function renderConditions(token) {
+  const active = new Set(token.conditions || []);
+  ui.tokenConditions.replaceChildren();
+
+  for (const [id, { label, short }] of Object.entries(conditionVocabulary)) {
+    const chip = document.createElement("button");
+    chip.type = "button";
+    chip.className = "condition" + (active.has(id) ? " condition--on" : "");
+    chip.title = label;
+    chip.textContent = short;
+    chip.setAttribute("aria-pressed", String(active.has(id)));
+    chip.addEventListener("click", () => {
+      const next = new Set(active);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      updateSelected({ conditions: [...next] });
+    });
+    ui.tokenConditions.append(chip);
+  }
 }
 
 function updateSelected(changes) {
@@ -647,6 +684,20 @@ ui.tokenLabel.addEventListener("change", () => updateSelected({ label: ui.tokenL
 ui.tokenLayer.addEventListener("change", () => updateSelected({ layer: ui.tokenLayer.value }));
 ui.tokenHidden.addEventListener("change", () => updateSelected({ hidden: ui.tokenHidden.checked }));
 ui.tokenLocked.addEventListener("change", () => updateSelected({ locked: ui.tokenLocked.checked }));
+
+/* Sent on change rather than on every keystroke: a half-typed "1" out of "17"
+ * would flash an almost-empty bar on the projector. */
+for (const [input, key] of [[ui.tokenHp, "hp"], [ui.tokenHpMax, "hp_max"]]) {
+  input.addEventListener("change", () => {
+    updateSelected({ [key]: input.value === "" ? null : Number(input.value) });
+  });
+}
+
+ui.tokenHpPublic.addEventListener("change", () =>
+  updateSelected({ hp_public: ui.tokenHpPublic.checked }));
+
+el("token-hp-clear").addEventListener("click", () =>
+  updateSelected({ hp: null, hp_max: null }));
 
 ui.tokenDelete.addEventListener("click", () => {
   const token = board.selected;

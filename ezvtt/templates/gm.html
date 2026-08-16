@@ -247,6 +247,33 @@
       </select>
     </div>
 
+    <div class="row">
+      <label class="control__label" for="token-hp">HP</label>
+      <input class="input input--num" type="number" id="token-hp"
+             step="1" placeholder="—" aria-label="Current hit points">
+      <span class="muted">/</span>
+      <input class="input input--num" type="number" id="token-hp-max"
+             min="1" step="1" placeholder="—" aria-label="Maximum hit points">
+      <button class="btn btn--ghost btn--sm" id="token-hp-clear" type="button"
+              title="Stop tracking health on this token">Clear</button>
+    </div>
+
+    <div class="control control--inline">
+      <label class="control__label" for="token-hp-public">
+        Players see a bar
+      </label>
+      <input type="checkbox" id="token-hp-public" checked>
+    </div>
+    <p class="control__hint">
+      Players are never sent the numbers &mdash; only a bar, in quarters &mdash;
+      unless the token is theirs. Untick to hide even that.
+    </p>
+
+    <div class="control">
+      <label class="control__label">Conditions</label>
+      <div class="condition-grid" id="token-conditions"></div>
+    </div>
+
     <div class="control control--inline">
       <label class="control__label" for="token-hidden">Hidden from players</label>
       <input type="checkbox" id="token-hidden">

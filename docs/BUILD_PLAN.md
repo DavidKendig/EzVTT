@@ -175,7 +175,8 @@ Scaffolding, licensing, and the skeleton everything else hangs off.
 - [x] **Grid auto-detect** from the map image — automatic on upload, silent
       when the map has no grid drawn on it
 - [ ] Undo/redo for GM board edits
-- [ ] Token HP bars and condition markers
+- [x] Token HP bars and condition markers — players get a bar in quarters and
+      never the numbers, unless the token is theirs (ADR-017)
 - [ ] Handout push — show an image to players
 - [ ] Campaign export/import as a zip
 

@@ -77,7 +77,9 @@ class Hub:
                 "is_gm": principal.is_gm,
                 "via_bypass": principal.via_bypass,
             },
-            "state": state.snapshot(for_gm=connection.is_gm),
+            "state": state.snapshot(
+                for_gm=connection.is_gm, viewer_id=principal.user_id
+            ),
         })
 
         # The display window has no chat panel, so it is not sent a log.
@@ -148,21 +150,34 @@ class Hub:
         """Re-send the full table to everyone, each tailored to their role.
 
         GM and player snapshots differ in content, so this cannot be one message
-        fanned out -- it is built per audience.
+        fanned out -- it is built per audience. Players differ from each other
+        too, but only over the tokens they own, so one snapshot per *viewer*
+        rather than per connection: a player with two tabs open gets the same
+        payload built once. See ADR-017.
         """
         async with self._lock:
             targets = list(self.connections)
 
         gm_state = state.snapshot(for_gm=True)
-        player_state = state.snapshot(for_gm=False)
+        players: dict[int | None, dict[str, Any]] = {}
 
         await self.deliver([
-            (c, {"type": "state", "state": gm_state if c.is_gm else player_state})
+            (c, {"type": "state", "state": gm_state if c.is_gm
+                 else self._player_snapshot(players, c)})
             for c in targets
         ])
 
+    @staticmethod
+    def _player_snapshot(
+        cache: dict[int | None, dict[str, Any]], connection: Connection
+    ) -> dict[str, Any]:
+        viewer = connection.principal.user_id
+        if viewer not in cache:
+            cache[viewer] = state.snapshot(for_gm=False, viewer_id=viewer)
+        return cache[viewer]
+
     async def broadcast_token(self, token: dict[str, Any] | None, kind: str) -> None:
-        """Send a single token delta.
+        """Send a single token delta, shaped per audience.
 
         Dragging a token generates a message per frame; resending the entire
         table each time would push a map, a library, and every other token down
@@ -171,11 +186,41 @@ class Hub:
         A hidden token goes to GMs only. Players are not told it exists -- not
         even that something changed -- because "a token you cannot see just
         moved" is itself information about the encounter.
+
+        Three shapes at most, whatever the size of the table: the GM's, the
+        owning player's, and everyone else's. Health is the only field that
+        differs between the last two. See ADR-017.
         """
         if token is None:
             return
+        if token["hidden"]:
+            return await self.broadcast({"type": kind, "token": token}, gm_only=True)
 
-        await self.broadcast({"type": kind, "token": token}, gm_only=token["hidden"])
+        await self.deliver(self._token_envelopes(token, kind))
+
+    def _token_envelopes(
+        self, gm_view: dict[str, Any], kind: str
+    ) -> list[tuple[Connection, dict[str, Any]]]:
+        """One message per connection, built from at most three payloads."""
+        token_id = gm_view["id"]
+        owner_id = gm_view["owner_user_id"]
+
+        public = state.get_token(token_id, for_gm=False)
+        owner = (
+            state.get_token(token_id, for_gm=False, viewer_id=owner_id)
+            if owner_id is not None else None
+        )
+
+        envelopes = []
+        for connection in list(self.connections):
+            if connection.is_gm:
+                view = gm_view
+            elif owner is not None and connection.principal.user_id == owner_id:
+                view = owner
+            else:
+                view = public
+            envelopes.append((connection, {"type": kind, "token": view}))
+        return envelopes
 
     async def broadcast_token_visibility(self, token: dict[str, Any]) -> None:
         """Handle a token being hidden or revealed.
@@ -188,13 +233,18 @@ class Hub:
             players = [c for c in self.connections if not c.is_gm]
 
         if token["hidden"]:
-            message = {"type": "token.removed", "token_id": token["id"]}
+            removal = {"type": "token.removed", "token_id": token["id"]}
+            player_envelopes = [(c, removal) for c in players]
         else:
-            message = {"type": "token.added", "token": token}
+            # An arrival, carrying whatever health that player is allowed.
+            player_envelopes = [
+                (c, message) for c, message in self._token_envelopes(token, "token.added")
+                if not c.is_gm
+            ]
 
         await self.deliver(
             [(c, {"type": "token.changed", "token": token}) for c in gms]
-            + [(c, message) for c in players]
+            + player_envelopes
         )
 
     async def broadcast_message(self, message: dict[str, Any]) -> None:
@@ -268,10 +318,12 @@ class Hub:
         if not players:
             return
 
-        # Built once and shared: every player sees the same fog.
-        player_state = state.snapshot(for_gm=False)
+        # Every player sees the same fog, but not the same hit points, so the
+        # snapshot is built once per viewer rather than once.
+        cache: dict[int | None, dict[str, Any]] = {}
         await self.deliver([
-            (c, {"type": "state", "state": player_state}) for c in players
+            (c, {"type": "state", "state": self._player_snapshot(cache, c)})
+            for c in players
         ])
 
     async def broadcast_ping(self, x: float, y: float, by: str, scene_id: int) -> None:
@@ -382,7 +434,9 @@ class Hub:
         if intent == "resync":
             return await self.send(connection, {
                 "type": "state",
-                "state": state.snapshot(for_gm=connection.is_gm),
+                "state": state.snapshot(
+                    for_gm=connection.is_gm, viewer_id=connection.principal.user_id
+                ),
             })
 
         # Chat is the first thing any signed-in person may do, not just the GM.

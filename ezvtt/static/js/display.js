@@ -48,6 +48,7 @@ socket.addEventListener("state", (event) => {
   board.setMap(map);
   board.setTokens(visible(event.detail.state.tokens));
   board.setTemplates(visible(event.detail.state.templates));
+  board.setConditions(event.detail.state.conditions);
   board.setFog(event.detail.state.fog || null);
   initiativePanel.apply(event.detail.state.initiative);
   idle.hidden = Boolean(map);

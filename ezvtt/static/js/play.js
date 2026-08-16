@@ -41,6 +41,7 @@ socket.addEventListener("state", (event) => {
   // sends a player something they are not meant to know exists. See ADR-004.
   board.setTokens(event.detail.state.tokens || []);
   board.setTemplates(event.detail.state.templates || []);
+  board.setConditions(event.detail.state.conditions);
   empty.hidden = Boolean(map);
   name.textContent = map ? map.name : "Waiting for the GM";
   initiativePanel.apply(event.detail.state.initiative);

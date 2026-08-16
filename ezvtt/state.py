@@ -427,7 +427,16 @@ def clamp_to_scene(
     )
 
 
-def token_to_dict(row) -> dict[str, Any]:
+def token_to_dict(
+    row, for_gm: bool = True, viewer_id: int | None = None
+) -> dict[str, Any]:
+    """One token, shaped for the audience receiving it.
+
+    Everything except health is the same for everyone. Health is not: see
+    ``status.visible_status`` and ADR-017.
+    """
+    from . import status
+
     kind = "bundled" if row["source"] == "bundled" else "uploads"
     return {
         "id": row["id"],
@@ -448,6 +457,7 @@ def token_to_dict(row) -> dict[str, Any]:
         "owner_user_id": row["owner_user_id"],
         "hidden": bool(row["is_hidden"]),
         "locked": bool(row["is_locked"]),
+        **status.visible_status(row, for_gm, viewer_id),
     }
 
 
@@ -458,14 +468,17 @@ _TOKEN_SELECT = """
 """
 
 
-def list_tokens(scene_id: int, include_hidden: bool = True) -> list[dict[str, Any]]:
-    """Tokens on a scene, in paint order.
+def list_tokens(
+    scene_id: int, for_gm: bool = True, viewer_id: int | None = None
+) -> list[dict[str, Any]]:
+    """Tokens on a scene, in paint order, shaped for one audience.
 
-    ``include_hidden`` is False for player audiences. A hidden token is omitted
-    from their payload entirely rather than flagged -- a flag in the JSON is a
-    spoiler for anyone who opens developer tools. See ADR-004.
+    A player's copy omits hidden tokens entirely rather than flagging them -- a
+    flag in the JSON is a spoiler for anyone who opens developer tools (ADR-004)
+    -- and carries a coarse health bar in place of the numbers, except on the
+    token they own (ADR-017).
     """
-    clause = "" if include_hidden else "AND t.is_hidden = 0"
+    clause = "" if for_gm else "AND t.is_hidden = 0"
     rows = db.connect().execute(
         # Layer then z: the CASE keeps map under object under token regardless
         # of how z values happen to collide between layers.
@@ -477,14 +490,16 @@ def list_tokens(scene_id: int, include_hidden: bool = True) -> list[dict[str, An
         """,  # noqa: S608 -- clause is a literal, not user input
         (scene_id,),
     ).fetchall()
-    return [token_to_dict(row) for row in rows]
+    return [token_to_dict(row, for_gm, viewer_id) for row in rows]
 
 
-def get_token(token_id: int) -> dict[str, Any] | None:
+def get_token(
+    token_id: int, for_gm: bool = True, viewer_id: int | None = None
+) -> dict[str, Any] | None:
     row = db.connect().execute(
         f"{_TOKEN_SELECT} WHERE t.id = ?", (token_id,)  # noqa: S608
     ).fetchone()
-    return token_to_dict(row) if row else None
+    return token_to_dict(row, for_gm, viewer_id) if row else None
 
 
 def place_token(
@@ -580,6 +595,22 @@ def update_token(token_id: int, **changes: Any) -> dict[str, Any] | None:
     if "locked" in changes:
         fields["is_locked"] = 1 if changes["locked"] else 0
 
+    from . import status
+
+    if "hp" in changes:
+        fields["hp"] = status.clean_hp(changes["hp"])
+
+    if "hp_max" in changes:
+        fields["hp_max"] = status.clean_hp_max(changes["hp_max"])
+
+    if "hp_public" in changes:
+        fields["hp_public"] = 1 if changes["hp_public"] else 0
+
+    if "conditions" in changes:
+        # Validated against a fixed vocabulary: these are drawn as badges on a
+        # canvas, and "whatever the client sent" is not something to render.
+        fields["conditions"] = status.clean_conditions(changes["conditions"])
+
     if not fields:
         return get_token(token_id)
 
@@ -612,7 +643,7 @@ def clear_tokens(scene_id: int) -> int:
 # Snapshots
 # --------------------------------------------------------------------------- #
 
-def snapshot(for_gm: bool) -> dict[str, Any]:
+def snapshot(for_gm: bool, viewer_id: int | None = None) -> dict[str, Any]:
     """The full table state a client needs on connect.
 
     ``for_gm`` decides what is *included*, not what is hidden later on the
@@ -622,6 +653,7 @@ def snapshot(for_gm: bool) -> dict[str, Any]:
     at all. See ADR-004 and ADR-011.
     """
     from . import fog as fog_module
+    from . import status as status_module
 
     scene = active_scene()
     active_map = get_map(scene["map_id"]) if scene and scene["map_id"] else None
@@ -634,6 +666,10 @@ def snapshot(for_gm: bool) -> dict[str, Any]:
                  else {"id": scene["id"], "map_id": scene["map_id"]},
         "map": active_map,
         "campaign_name": db.get_setting("campaign_name", "A New Campaign"),
+        # The condition vocabulary, sent once with the table rather than
+        # duplicated in the client. Sixteen entries of no secrecy whatever, and
+        # one place for the names to live.
+        "conditions": status_module.CONDITIONS,
     }
 
     if scene is None:
@@ -653,7 +689,7 @@ def snapshot(for_gm: bool) -> dict[str, Any]:
     state["initiative"] = initiative_module.get(scene["id"], for_gm=for_gm)
 
     fog_state = fog_module.get(scene["id"]) if active_map else None
-    tokens = list_tokens(scene["id"], include_hidden=for_gm)
+    tokens = list_tokens(scene["id"], for_gm=for_gm, viewer_id=viewer_id)
     templates = aoe_module.list_for(scene["id"], include_hidden=for_gm)
 
     if for_gm:

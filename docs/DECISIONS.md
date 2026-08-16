@@ -570,3 +570,45 @@ computed from `requirements.txt`, so adding a direct dependency is still the
 deliberate act CLAUDE.md asks it to be, while transitive drift is simply
 followed. It found 21 packages where the list claimed 19 and one of those did
 not exist.
+
+---
+
+## ADR-017 — Players see a health bar in quarters, never the numbers
+
+**Date:** 2026-08-16 · **Status:** Accepted
+
+**Decision.** A token may carry hit points and conditions. Conditions are
+public. Hit *points* are not: a player is sent a bar in quarters, and only when
+the GM has left it public. The exact numbers go to the GM, and to the player who
+owns that token.
+
+**Why quarters rather than a fraction.** The obvious implementation sends
+`hp / hp_max` and lets the client draw a bar. But a player who knows a monster
+has 11 hit points and receives `0.6363` has just been told it is on 7 — the
+numbers were withheld and then handed over in a different notation. Four steps
+carry what a glance at a bar actually tells you: full, most, half, nearly gone.
+Rounded *up*, so a creature clinging on at one hit point shows a sliver rather
+than an empty bar; an empty bar reads as dead, and the difference matters to
+whoever is deciding whether to run.
+
+**Why conditions are public.** A prone goblin is prone in front of everyone at
+the table. Concealing that would be modelling a fiction nobody plays.
+
+**Why the owner gets numbers.** It is their character. Hiding a player's own hit
+points from them would be absurd, and every table tracks them on a sheet anyway.
+
+**What it cost.** Health is the first field whose *value* differs between two
+players, which broke an assumption three broadcast paths were built on:
+`broadcast_state` built one player snapshot and fanned it out, and
+`broadcast_token` sent one payload to everybody. Both now build per viewer —
+snapshots memoised per `user_id` so a player with two tabs open costs one build,
+and token deltas shaped into at most three payloads (the GM's, the owner's,
+everyone else's) regardless of how many people are at the table.
+
+**Consequences.** The condition vocabulary is a fixed sixteen entries with
+two-letter badge codes, sent to clients with the table so the names live in one
+place; "whatever the client sent" is not something to draw on a canvas. `dead`
+and `deafened` get DD and DF, because both would otherwise be DE and that is a
+poor thing to be vague about. A token with no hit points set says nothing about
+health at all, which is how the several hundred barrels on a battlemap stay
+quiet.
