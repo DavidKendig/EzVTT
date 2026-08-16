@@ -34,13 +34,17 @@ def _project_root() -> Path:
     one-file build, ``__file__`` points inside a temporary extraction directory
     that is deleted on exit -- writing a campaign database there would silently
     lose it. Fall back to the directory containing the executable instead.
-    """
-    if getattr(sys, "frozen", False):
-        return Path(sys.executable).resolve().parent
 
+    ``EZVTT_DATA_ROOT`` wins over both, frozen or not: it is how the packaging
+    smoke test points a release binary at a scratch directory, and how a GM
+    keeps a campaign on a USB stick with the program somewhere else.
+    """
     override = os.environ.get("EZVTT_DATA_ROOT")
     if override:
         return Path(override).expanduser().resolve()
+
+    if getattr(sys, "frozen", False):
+        return Path(sys.executable).resolve().parent
 
     return _package_root().parent
 
@@ -76,6 +80,27 @@ def ensure_directories() -> None:
     """Create the runtime directories. Safe to call repeatedly."""
     for directory in WRITABLE_DIRS:
         directory.mkdir(parents=True, exist_ok=True)
+
+
+def bundled_file(name: str) -> Path | None:
+    """Locate a document shipped alongside the code, or None if it is absent.
+
+    LICENSE, NOTICE, and THIRD_PARTY_LICENSES.md sit at the repository root when
+    running from source and at the root of the extraction directory in a frozen
+    build. A packaged EzVTT redistributes its dependencies, which obliges it to
+    carry their licence texts where someone holding only the binary can still
+    read them -- ``--licences`` prints this. See ADR-008 and ADR-016.
+    """
+    roots = [PROJECT_ROOT, PACKAGE_ROOT.parent]
+    meipass = getattr(sys, "_MEIPASS", None)
+    if meipass:
+        roots.insert(0, Path(meipass))
+
+    for root in roots:
+        candidate = root / name
+        if candidate.is_file():
+            return candidate
+    return None
 
 
 # --------------------------------------------------------------------------- #

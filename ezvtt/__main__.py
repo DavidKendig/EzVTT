@@ -191,11 +191,47 @@ def build_parser() -> argparse.ArgumentParser:
     )
 
     parser.add_argument("--version", action="version", version=f"EzVTT {__version__}")
+
+    # British spelling in what a user reads, with the American form accepted
+    # silently -- half the world will type the other one.
+    parser.add_argument(
+        "--licences", "--licenses", dest="licences", action="store_true",
+        help="print the licences of EzVTT and everything it ships, then exit",
+    )
     return parser
+
+
+def _print_licences() -> int:
+    """Print the licence texts carried in this build.
+
+    A packaged EzVTT redistributes its dependencies, which obliges it to carry
+    their licence texts. Someone holding only the executable has nowhere else
+    to look, so it can show them itself. See ADR-008 and ADR-016.
+    """
+    printed = False
+    for name in ("LICENSE", "NOTICE", "THIRD_PARTY_LICENSES.md"):
+        path = config.bundled_file(name)
+        if path is None:
+            continue
+        print(f"\n{'=' * 70}\n{name}\n{'=' * 70}\n")
+        print(path.read_text(encoding="utf-8").rstrip())
+        printed = True
+
+    if not printed:
+        print(
+            "No licence files found in this build. Source and licences: "
+            "https://github.com/DavidKendig/EzVTT",
+            file=sys.stderr,
+        )
+        return 1
+    return 0
 
 
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
+
+    if args.licences:
+        return _print_licences()
 
     logging.basicConfig(
         level=logging.INFO,

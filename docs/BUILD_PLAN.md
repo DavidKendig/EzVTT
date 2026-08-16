@@ -181,13 +181,22 @@ Scaffolding, licensing, and the skeleton everything else hangs off.
 
 ---
 
-## Phase 9 — Packaging `[ ]`
+## Phase 9 — Packaging `[~]`
 
-- [ ] PyInstaller single-file builds for Windows, macOS, Linux
-- [ ] GitHub Actions release matrix with checksums
-- [ ] First-run data directory bootstrap outside the bundle
-- [ ] **Run `scripts/gen_third_party_licenses.py` and ship its output** — bundled builds embed dependencies, which triggers their licence-inclusion terms (ADR-008)
-- [ ] Per-platform smoke tests
+- [x] PyInstaller single-file builds — `ezvtt.spec`, `scripts/build.ps1`,
+      `scripts/build.sh`. **Built and verified on Windows**; macOS and Linux are
+      wired into CI and have not been run yet
+- [x] GitHub Actions matrix with checksums — `ci.yml` and `release.yml`.
+      **Written, not yet exercised**: nothing has been pushed to GitHub
+- [x] First-run data directory bootstrap outside the bundle — verified: a fresh
+      binary writes `data/` beside itself and opens the setup wizard
+- [x] **Run `scripts/gen_third_party_licenses.py` and ship its output** —
+      generated into the bundle and beside it, printable with `--licences`.
+      The generator now computes the dependency closure; the hand-written list
+      had already drifted (ADR-008, ADR-016)
+- [x] Per-platform smoke tests — `scripts/smoke_test.py`, passing on Windows
+      against both a source checkout and the built binary; CI runs it on three
+- [ ] A real release: push a tag, watch all three platforms build, publish
 
 ---
 

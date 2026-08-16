@@ -10,15 +10,15 @@ without reading the codebase.
 
 ## Start here
 
-**State at 2026-08-15.** Phases 0–7 done. Phase 8 under way: scenes, the
-initiative tracker, measuring, pointing, and **grid auto-detect** all ship.
+**State at 2026-08-16.** Phases 0–8 done bar polish. **Phase 9 packaging is
+built and runs**: a single-file EzVTT that needs no Python.
 
 | | |
 |---|---|
 | Branch | `rewrite/fastapi-vtt`, everything committed and pushed |
 | PR | [#1](https://github.com/DavidKendig/EzVTT/pull/1) — open, not merged |
 | `main` | still the original Java/Django prototype; the PR replaces it |
-| Tests | **588**, all passing |
+| Tests | **612**, all passing |
 | Lint | `ruff check .` clean |
 
 ```bash
@@ -37,10 +37,15 @@ one click · an initiative tracker on all three screens · a ruler, and
 fireballs the table can see · Alt-click to point at something · **a grid that
 lines itself up on upload.**
 
-**Next:** Phase 8's remainder — token HP bars and condition markers, undo/redo,
-handout push, campaign export. None is load-bearing; **Phase 9 (packaging) is
-the more valuable next move** if a release matters more than polish. See the
-bottom of this file.
+**Next:** push to GitHub and cut a real release — the workflows have never
+run, and macOS and Linux builds have never been produced. After that, Phase 8's
+remainder (HP bars, undo/redo, handout push, campaign export) or Phase 10 (SRD).
+See the bottom of this file.
+
+```bash
+.\scripts\build.ps1                        # a single-file EzVTT + checksum
+.venv\Scripts\python scripts\smoke_test.py dist\ezvtt.exe
+```
 
 **Two things a cold session should not "fix":**
 
@@ -50,6 +55,76 @@ bottom of this file.
 2. `scripts/stop.ps1` sends a console control event from a child process rather
    than calling `taskkill`. Windows has no SIGTERM for console apps, and doing
    the console dance inline breaks the calling shell.
+
+---
+
+## Session 14 — 2026-08-16 · Phase 9 · **packaging**
+
+**Where the project stands:** `dist/ezvtt.exe` is 24.5 MB, needs no Python, and
+was measured doing the whole job — starting, migrating, rendering, serving its
+static files, and printing its licences. What has *not* happened is a real
+release: the workflows have never run and no macOS or Linux binary exists yet.
+
+### Shipped
+
+- **`ezvtt.spec`** — one-file build: data directories, the dynamic imports
+  uvicorn and Markdown make, and the licence files
+- **`scripts/build.ps1` / `build.sh`** — licences, build, smoke test, checksum.
+  Refuses to build without the licence file and refuses to ship a build that
+  fails the smoke test
+- **`scripts/smoke_test.py`** — ten checks against a real running binary
+- **`scripts/entrypoint.py`** — the packaged entry point
+- **`.github/workflows/ci.yml`** — tests and lint on three platforms and two
+  Pythons, a licence job, and a packaged build smoke-tested on each platform
+- **`.github/workflows/release.yml`** — tag-triggered matrix build, archives
+  with the licence files beside the binary, `SHA256SUMS.txt`, draft release
+- **`docs/PACKAGING.md`** and **ADR-016**
+
+### The licence generator was quietly wrong
+
+`gen_third_party_licenses.py` worked from a hand-maintained list of
+distributions. Running it for the first time in months: **`sniffio` is not
+installed**. anyio had dropped it, and two new transitive packages had appeared
+that the file knew nothing about. Nobody neglected anything — upstream changed
+*its* dependencies, which no care on this side prevents.
+
+It now computes the closure from `requirements.txt`. Adding a *direct*
+dependency is still the deliberate act CLAUDE.md asks it to be; transitive
+drift is simply followed. **21 packages, where the list claimed 19 and one of
+those did not exist.**
+
+### Four traps, all found by building it
+
+1. **The entry point cannot be `ezvtt/__main__.py`.** PyInstaller runs its entry
+   script as `__main__` with no package context, so every relative import in it
+   fails — *in the binary only*. Hence `scripts/entrypoint.py`.
+2. **Killing a one-file build leaves a process behind.** The bootloader and the
+   program it unpacks are two processes; terminating the first leaves a web
+   server running and **holding the executable open**, so the next build dies
+   with "access is denied" on a file nothing appears to be using. The smoke test
+   now kills the tree.
+3. **Reading its output can block forever.** Same two processes: the survivor
+   inherits the pipe. Output goes to a file instead.
+4. **PowerShell's `Set-Content -Encoding utf8` writes a BOM and CRLF**, and both
+   break `sha256sum -c` — the BOM corrupts the hash, the carriage return becomes
+   part of the filename. Written byte-exact now, and verified with `sha256sum -c`.
+
+### Verified, not just written
+
+- `.\scripts\build.ps1` end to end: **24.5 MB exe, all ten smoke checks, exit 0**
+- The smoke test passes against **both** a source checkout and the binary
+- A fresh binary against an empty directory: migrations applied, `first_run`
+  true, database written **beside the executable**, `/` → `/setup`, the setup
+  page rendered, `ezvtt.css` served at 36,855 bytes
+- `ezvtt.exe --licences` prints 3,226 lines including the Apache text and the
+  dependency licences
+- `sha256sum -c` accepts the generated checksum file
+- Both workflow files parse as YAML with the jobs and steps intended
+- Cold first launch on Windows is ~20s (unpacking plus antivirus); warm is ~4s.
+  The smoke test allows 90
+
+**612 tests, ruff clean** — `tests/test_packaging.py` adds 24, including a guard
+that fails if a new data directory under `ezvtt/` is ever left out of the spec.
 
 ---
 

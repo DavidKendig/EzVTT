@@ -18,40 +18,14 @@ compliance gap fails the build instead of disappearing quietly.
 from __future__ import annotations
 
 import argparse
+import re
 import sys
 from importlib import metadata
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 OUTPUT = REPO_ROOT / "THIRD_PARTY_LICENSES.md"
-
-# Distributions EzVTT depends on, directly or transitively, that ship in a
-# release. Keep in sync with requirements.txt; the script verifies the set is
-# actually installed and complains if it is not.
-DISTRIBUTIONS = [
-    "fastapi",
-    "starlette",
-    "pydantic",
-    "pydantic_core",
-    "annotated-types",
-    "typing_extensions",
-    "uvicorn",
-    "websockets",
-    "python-multipart",
-    "Jinja2",
-    "MarkupSafe",
-    "pillow",
-    "Markdown",
-    "qrcode",
-    "h11",
-    "anyio",
-    "click",
-    "idna",
-    "sniffio",
-]
-
-# Optional extras: absent from a minimal install, included when present.
-OPTIONAL_DISTRIBUTIONS = ["zeroconf", "ifaddr", "colorama"]
+REQUIREMENTS = REPO_ROOT / "requirements.txt"
 
 # Filenames inside a dist-info that hold license text, in preference order.
 LICENSE_FILE_HINTS = (
@@ -89,6 +63,93 @@ python scripts/gen_third_party_licenses.py
 
 class LicenseGap(Exception):
     """A distribution is installed but ships no locatable license text."""
+
+
+# --------------------------------------------------------------------------- #
+# What a release actually carries
+# --------------------------------------------------------------------------- #
+
+_NAME_END = re.compile(r"[<>=!~\[;(\s]")
+
+
+def _requirement_name(spec: str) -> str | None:
+    """The distribution name from a requirement string, or None to skip it.
+
+    Entries guarded by an ``extra ==`` marker belong to an optional extra that
+    nobody installed unless they asked for it. Those, and entries whose
+    environment marker does not apply on this platform, are resolved the honest
+    way further down: by asking whether the distribution is really installed.
+    """
+    spec = spec.split("#", 1)[0].strip()
+    if not spec or spec.startswith("-"):
+        return None
+    if "extra ==" in spec:
+        return None
+    name = _NAME_END.split(spec, maxsplit=1)[0].strip()
+    return name or None
+
+
+def _canonical(name: str) -> str:
+    return re.sub(r"[-_.]+", "-", name).lower()
+
+
+def _find(name: str) -> metadata.Distribution | None:
+    for candidate in (name, name.replace("-", "_"), name.replace("_", "-")):
+        try:
+            return metadata.distribution(candidate)
+        except metadata.PackageNotFoundError:
+            continue
+    return None
+
+
+def direct_requirements() -> list[str]:
+    """Names listed in requirements.txt, in file order."""
+    return [
+        name
+        for line in REQUIREMENTS.read_text(encoding="utf-8").splitlines()
+        if (name := _requirement_name(line))
+    ]
+
+
+def shipped_distributions() -> tuple[list[tuple[str, metadata.Distribution]], list[str]]:
+    """Every distribution a release carries, and any direct one that is missing.
+
+    The dependency closure is *computed*, not listed. The hand-maintained list
+    this replaced drifted the moment an upstream package changed its own
+    dependencies -- anyio dropped sniffio, and the file went on describing a
+    tree that no longer existed while claiming to be authoritative. Adding a
+    direct dependency is still a deliberate act: it means editing
+    requirements.txt, which is the decision CLAUDE.md asks to be justified.
+    """
+    found: dict[str, metadata.Distribution] = {}
+    missing: list[str] = []
+
+    queue = [(name, True) for name in direct_requirements()]
+    while queue:
+        name, is_direct = queue.pop(0)
+        key = _canonical(name)
+        if key in found:
+            continue
+
+        dist = _find(name)
+        if dist is None:
+            # A direct requirement that is not installed is an error; a
+            # transitive one is simply an extra or a marker that did not apply.
+            if is_direct:
+                missing.append(name)
+            continue
+
+        found[key] = dist
+        for spec in dist.requires or []:
+            required = _requirement_name(spec)
+            if required and _canonical(required) not in found:
+                queue.append((required, False))
+
+    ordered = sorted(
+        ((dist.metadata["Name"] or key, dist) for key, dist in found.items()),
+        key=lambda pair: pair[0].lower(),
+    )
+    return ordered, missing
 
 
 def _dist_info_dir(dist: metadata.Distribution) -> Path | None:
@@ -230,17 +291,10 @@ def main(argv: list[str] | None = None) -> int:
     sections: list[str] = []
     summary: list[tuple[str, str, str]] = []
     gaps: list[str] = []
-    missing: list[str] = []
 
-    for name in DISTRIBUTIONS + OPTIONAL_DISTRIBUTIONS:
-        optional = name in OPTIONAL_DISTRIBUTIONS
-        try:
-            dist = metadata.distribution(name)
-        except metadata.PackageNotFoundError:
-            if not optional:
-                missing.append(name)
-            continue
+    distributions, missing = shipped_distributions()
 
+    for name, dist in distributions:
         try:
             section, version, license_id = _render(name, dist)
         except LicenseGap as exc:

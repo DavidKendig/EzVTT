@@ -512,3 +512,61 @@ measured at 3-6ms for `/health` during a 229ms detection, against 5ms idle.
 Rotated and hex grids are out of scope and simply return None. The confidence
 number is reported to the caller but not shown to the GM: "it found a grid" and
 "it did not" are the only two things they can act on.
+
+---
+
+## ADR-016 — One file per platform, state beside it, licences inside it
+
+**Date:** 2026-08-15 · **Status:** Accepted
+
+**Decision.** A release is a single PyInstaller one-file executable per
+platform, shipped in an archive with `LICENSE`, `NOTICE`,
+`THIRD_PARTY_LICENSES.md`, and `README.md`. The campaign database and uploads
+live in `data/` **beside the executable**, never inside it. Map artwork is not
+bundled. Nothing is published that has not started, served a page, and printed
+its licences on the platform it was built for.
+
+**Why one file.** The audience is a GM who wants to run a game, not install
+software. Download one thing, double-click it, and the browser opens. A
+one-directory build is faster to start but arrives as a folder of two hundred
+files where the executable is one of them, and "which of these do I click" is
+exactly the friction this project exists to remove. The cost is a slow first
+launch — a 25 MB binary unpacks itself and is scanned by antivirus while it
+does, measured at 20 seconds cold on Windows and a few seconds warm.
+
+**Why state goes beside the executable.** A one-file build unpacks into a
+temporary directory that is deleted on exit. Writing the campaign there would
+lose it, silently, the first time. Putting it beside the executable also makes
+"back up my campaign" mean "copy that folder", and lets a GM carry the whole
+thing on a stick. `EZVTT_DATA_ROOT` overrides it for anyone who wants the
+program in one place and the campaign in another.
+
+**Why the artwork stays out.** 537 MB of Tom Cartos assets under a separate
+licence would dominate the download, and ADR-003 already keeps it out of the
+repository for the same reason. `scripts/fetch-assets` installs it beside the
+executable, where the program looks for it.
+
+**Why the licences ship twice.** Inside the binary, so `ezvtt --licences` works
+for someone who has only the executable, and beside it in the archive, so
+unpacking shows them without running anything. ADR-008 committed this project
+to shipping dependency licence texts in bundled builds; a file only reachable
+by running the program is a thin reading of that obligation.
+
+**Consequences, all of which were found by building it.** The entry point has
+to be a separate `scripts/entrypoint.py`, because PyInstaller runs its entry
+script as `__main__` with no package context and every relative import in
+`ezvtt/__main__.py` fails — in the binary only. Templates, static files, and
+migrations are listed in `ezvtt.spec` by hand, since nothing imports them.
+uvicorn and Markdown choose modules by name at runtime, so both are collected
+wholesale. UPX is off: packed binaries get quarantined by antivirus, which is a
+worse first impression than a larger download.
+
+**The licence generator had to be rewritten.** It worked from a hand-maintained
+list of distributions, which had already drifted: `anyio` dropped its
+dependency on `sniffio`, and two new transitive packages had appeared. The list
+was not wrong through neglect — it was wrong because upstream changed *its*
+dependencies, which no amount of care on this side prevents. The closure is now
+computed from `requirements.txt`, so adding a direct dependency is still the
+deliberate act CLAUDE.md asks it to be, while transitive drift is simply
+followed. It found 21 packages where the list claimed 19 and one of those did
+not exist.

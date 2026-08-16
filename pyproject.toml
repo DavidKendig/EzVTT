@@ -88,3 +88,9 @@ ignore = [
 # trips the rule.
 "ezvtt/auth.py" = ["S105"]
 "ezvtt/state.py" = ["S105"]
+# The smoke test's whole job is to launch a command a developer named on their
+# own command line, so S603's "untrusted input" is the input. S607 flags
+# "taskkill" as a partial path; hardcoding C:\Windows\System32 would break on
+# any system that puts it elsewhere and buys nothing. Scoped to this file:
+# nothing that ships to a GM runs a subprocess.
+"scripts/smoke_test.py" = ["S603", "S607"]
