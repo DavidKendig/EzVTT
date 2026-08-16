@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import sqlite3
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -477,6 +478,8 @@ class Hub:
                 await table_handler(self, connection, payload)
             except (ValueError, KeyError, TypeError) as exc:
                 await self.send(connection, _error(str(exc)))
+            except sqlite3.Error:
+                await self._report_database_failure(connection, intent)
             return
 
         handler = _GM_INTENTS.get(intent)
@@ -494,6 +497,21 @@ class Hub:
             await handler(self, connection, payload)
         except (ValueError, KeyError, TypeError) as exc:
             await self.send(connection, _error(str(exc)))
+        except sqlite3.Error:
+            await self._report_database_failure(connection, intent)
+
+    async def _report_database_failure(self, connection: Connection, intent: str) -> None:
+        """Answer a failed intent instead of letting the socket die.
+
+        Anything not caught here travels up to board_socket, which logs it and
+        closes the connection -- so one refused write mid-session drops the GM
+        to "Reconnecting..." and takes their undo history with it. A single
+        edit failing is not a reason to leave the table.
+        """
+        log.exception("Database error handling %s", intent)
+        await self.send(connection, _error(
+            "EzVTT could not save that. Nothing has changed; try again."
+        ))
 
 
 # --------------------------------------------------------------------------- #

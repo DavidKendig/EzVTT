@@ -99,7 +99,13 @@ def delete_map(map_id: int) -> str | None:
     if row is None:
         return None
 
-    # Scenes and their tokens cascade from the foreign key.
+    from . import undo
+
+    # Scenes and their tokens cascade from the foreign key; their undo history
+    # does not, so it is dropped here.
+    for scene_id in scene_ids_for_map(map_id):
+        undo.forget(scene_id)
+
     conn.execute("DELETE FROM maps WHERE id = ?", (map_id,))
     conn.commit()
     return row["filename"]
@@ -310,9 +316,16 @@ def delete_scene(scene_id: int) -> bool:
     at, and switching them to some other encounter unasked would be worse than
     an empty board.
     """
+    from . import undo
+
     conn = db.connect()
     cursor = conn.execute("DELETE FROM scenes WHERE id = ?", (scene_id,))
     conn.commit()
+
+    # The history describes rows that no longer exist. Kept, it would sit in
+    # memory for the life of the process and, if the id were ever reused,
+    # restore one scene's tokens into another.
+    undo.forget(scene_id)
     return cursor.rowcount > 0
 
 

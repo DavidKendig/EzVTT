@@ -17,7 +17,7 @@ Windows, macOS, and Linux; Phase 8 has since been finished in full.
 |---|---|
 | Branch | `main` — [PR #1](https://github.com/DavidKendig/EzVTT/pull/1) merged 2026-08-16 |
 | `main` | **is** the rewrite now; the Java/Django prototype is history behind it |
-| Tests | **692**, all passing on Windows, macOS, and Linux |
+| Tests | **698**, all passing on Windows, macOS, and Linux |
 | Lint | `ruff check .` clean |
 | CI | green on 3 platforms, Python 3.10 and 3.12 |
 | Release | **[v0.1.1](https://github.com/DavidKendig/EzVTT/releases/tag/v0.1.1)** — published; three archives + SHA256SUMS |
@@ -56,6 +56,57 @@ would also be worth cutting: everything since v0.1.1 is unreleased.
 2. `scripts/stop.ps1` sends a console control event from a child process rather
    than calling `taskkill`. Windows has no SIGTERM for console apps, and doing
    the console dance inline breaks the calling shell.
+
+---
+
+## Session 19 — 2026-08-16 · **five bugs in undo**
+
+A hunt rather than a feature. Each suspicion was *run* before it was believed,
+and each fix has a test that fails without it.
+
+### The three that would have been noticed at a table
+
+**The first fog stroke on a scene could never be undone.** There is no fog row
+until something creates one, so a checkpoint taken before the very first brush
+captured no mask — and the restore, finding nothing to put back, left the stroke
+exactly where it was. Every *subsequent* stroke undid correctly, which is the
+worst shape for a bug like this: it looks like it works.
+
+**Undo after deleting artwork from the library closed the GM's socket.** The
+snapshot remembers which asset a token was made from; delete that asset and the
+next undo re-inserts a row pointing at nothing, fails the foreign key, and — as
+`sqlite3.IntegrityError` is not `ValueError` — travels all the way up to the
+socket handler, which logs it and hangs up. Mid-session. Restoring now blanks
+references that have gone, which is what the live schema does with
+`ON DELETE SET NULL` anyway.
+
+**Undoing a deletion left the creature out of the turn order.** The initiative
+row cascades away with its token; the snapshot did not carry the initiative
+table, so the token came back and the tracker stayed one entry short. The order
+is part of a scene, and it is in the checkpoint now.
+
+### The two found while fixing those
+
+**Any database error in any intent dropped the connection.** The handler caught
+`ValueError`, `KeyError`, `TypeError` — and nothing else went to the client. One
+refused write now answers *"EzVTT could not save that. Nothing has changed; try
+again."* rather than putting the GM on "Reconnecting…" and taking their undo
+history with it.
+
+**Undo history outlived the scenes it described.** Deleting a scene, or the map
+above it, left its stack in memory for the life of the process — describing rows
+that no longer exist, and ready to restore one scene's tokens into another if an
+id were ever reused.
+
+### Things that turned out to be fine
+
+Worth recording so the next hunt starts somewhere else: dice notation edges
+(`0d6`, `1d0`, `2d6kh5`, `1d20+`) are all refused cleanly; asset search escapes
+`%` and `_` rather than treating them as wildcards; a 144-megapixel upload is
+refused as a decompression bomb; chat retention trims the oldest and keeps
+exactly its cap; health and conditions survive an export/import round trip.
+
+**698 tests, ruff clean** — six added, one per fix plus the map-deletion case.
 
 ---
 

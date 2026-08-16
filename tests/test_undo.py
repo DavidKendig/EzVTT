@@ -265,3 +265,107 @@ def test_history_does_not_survive_being_forgotten(scene):
 
     assert undo.depth(scene["id"])["undo"] == 0
     assert len(state.list_tokens(scene["id"])) == 1
+
+
+# --------------------------------------------------------------------------- #
+# Bugs found after the fact
+# --------------------------------------------------------------------------- #
+
+def test_the_first_fog_stroke_on_a_scene_can_be_undone(scene):
+    """There is no fog row until something creates one, so a checkpoint taken
+    before the very first stroke captured no mask at all -- and the restore,
+    finding nothing to put back, left the stroke exactly where it was."""
+    assert db.connect().execute(
+        "SELECT COUNT(*) AS n FROM fog WHERE scene_id = ?", (scene["id"],)
+    ).fetchone()["n"] == 0
+
+    undo.checkpoint(scene["id"], "brush the fog")
+    fog.paint_rect(scene["id"], 0, 0, 4, 4, revealed=True)
+    assert sum(fog.get(scene["id"])["cells"]) > 0
+
+    undo.undo(scene["id"])
+
+    assert sum(fog.get(scene["id"])["cells"]) == 0
+
+
+def test_undo_survives_the_asset_being_deleted_from_the_library(scene):
+    """Removing artwork is an ordinary thing to do, and it used to make the
+    next undo fail its foreign key -- which closed the GM's socket rather than
+    reporting anything."""
+    token = state.place_token(scene["id"], scene["asset"], 3, 3)
+    state.update_token(token["id"], label="Goblin")
+
+    undo.checkpoint(scene["id"], "delete a token")
+    state.delete_token(token["id"])
+    db.connect().execute("DELETE FROM assets WHERE id = ?", (scene["asset"],))
+    db.connect().commit()
+
+    undo.undo(scene["id"])
+
+    restored = state.get_token(token["id"])
+    assert restored is not None
+    assert restored["label"] == "Goblin"
+    # It comes back without its picture, which is what the live schema does to
+    # a token whose asset is deleted underneath it.
+    assert restored["asset_id"] is None
+
+
+def test_undoing_a_deletion_puts_the_creature_back_in_the_turn_order(scene):
+    """The initiative row cascades away with the token. Restoring the token and
+    not the row left the tracker silently one creature short."""
+    from ezvtt import initiative
+
+    token = state.place_token(scene["id"], scene["asset"], 1, 1, "token")
+    state.update_token(token["id"], label="Goblin")
+    initiative.add_tokens(scene["id"], [token["id"]])
+    initiative.add(scene["id"], "Anya", value=12)
+    initiative.start(scene["id"])
+
+    undo.checkpoint(scene["id"], "delete a token")
+    state.delete_token(token["id"])
+    assert [e["label"] for e in initiative.get(scene["id"])["entries"]] == ["Anya"]
+
+    undo.undo(scene["id"])
+
+    assert [e["label"] for e in initiative.get(scene["id"])["entries"]] == ["Anya", "Goblin"]
+
+
+def test_an_undo_into_a_scene_that_has_gone_is_refused_not_raised(scene):
+    """A database error travelling up from an intent closes the GM's socket.
+
+    The snapshot has to contain something for this to bite: restoring nothing
+    into a missing scene inserts no rows and breaks no foreign key.
+    """
+    state.place_token(scene["id"], scene["asset"], 1, 1)
+    undo.checkpoint(scene["id"], "place a token")
+    state.place_token(scene["id"], scene["asset"], 2, 2)
+
+    db.connect().execute("DELETE FROM scenes WHERE id = ?", (scene["id"],))
+    db.connect().commit()
+
+    with pytest.raises(ValueError, match="cannot be undone"):
+        undo.undo(scene["id"])
+
+
+def test_deleting_a_scene_drops_its_history(scene):
+    """Otherwise it sits in memory for the life of the process, describing rows
+    that no longer exist."""
+    undo.checkpoint(scene["id"], "place a token")
+    state.place_token(scene["id"], scene["asset"], 1, 1)
+    assert undo.depth(scene["id"])["undo"] == 1
+
+    state.delete_scene(scene["id"])
+
+    assert undo.depth(scene["id"])["undo"] == 0
+
+
+def test_deleting_a_map_drops_the_history_of_every_scene_on_it(scene):
+    other = state.create_scene(1, "Elsewhere")
+    undo.checkpoint(scene["id"], "place a token")
+    state.place_token(scene["id"], scene["asset"], 1, 1)
+    undo.checkpoint(other, "place a token")
+
+    state.delete_map(1)
+
+    assert undo.depth(scene["id"])["undo"] == 0
+    assert undo.depth(other)["undo"] == 0

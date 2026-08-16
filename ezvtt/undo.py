@@ -19,6 +19,7 @@ not the last hour of edits still waiting to be taken back.
 from __future__ import annotations
 
 import logging
+import sqlite3
 import time
 from dataclasses import dataclass, field
 from typing import Any
@@ -44,6 +45,7 @@ class Checkpoint:
     at: float
     tokens: list[tuple]
     templates: list[tuple]
+    initiative: list[tuple]
     fog: tuple[int, int, str] | None
 
 
@@ -85,6 +87,15 @@ _TEMPLATE_COLUMNS = (
     "label", "is_hidden",
 )
 
+# The turn order belongs to a scene as much as its tokens do. Without it here,
+# undoing the deletion of the creature whose turn it was brought the token back
+# and left the tracker one entry short: the initiative row had cascaded away
+# with the token, and nothing put it back.
+_INITIATIVE_COLUMNS = (
+    "id", "scene_id", "token_id", "label", "value", "sort_order", "is_current",
+    "modifier", "is_hidden",
+)
+
 
 def capture(scene_id: int, label: str) -> Checkpoint:
     conn = db.connect()
@@ -100,6 +111,12 @@ def capture(scene_id: int, label: str) -> Checkpoint:
             (scene_id,),
         )
     ]
+    order = [
+        tuple(row) for row in conn.execute(
+            f"SELECT {', '.join(_INITIATIVE_COLUMNS)} FROM initiative WHERE scene_id = ?",  # noqa: S608
+            (scene_id,),
+        )
+    ]
     fog_row = conn.execute(
         "SELECT cols, rows, revealed_rle FROM fog WHERE scene_id = ?", (scene_id,)
     ).fetchone()
@@ -109,8 +126,30 @@ def capture(scene_id: int, label: str) -> Checkpoint:
         at=time.monotonic(),
         tokens=tokens,
         templates=templates,
+        initiative=order,
         fog=tuple(fog_row) if fog_row else None,
     )
+
+
+def _without_missing(rows: list[tuple], column: int, known: set[int]) -> list[tuple]:
+    """Blank out references to rows that no longer exist.
+
+    A snapshot remembers which asset a token was made from, and which token an
+    initiative entry belongs to. Either can be deleted between the checkpoint
+    and the undo -- removing artwork from the library is an ordinary thing to
+    do -- and re-inserting a row pointing at it fails the foreign key and aborts
+    the whole restore. The live schema answers this with ON DELETE SET NULL;
+    this is the same answer, applied on the way back in.
+    """
+    cleaned = []
+    for row in rows:
+        if row[column] is None or row[column] in known:
+            cleaned.append(row)
+            continue
+        patched = list(row)
+        patched[column] = None
+        cleaned.append(tuple(patched))
+    return cleaned
 
 
 def _restore(scene_id: int, snapshot: Checkpoint) -> None:
@@ -119,32 +158,64 @@ def _restore(scene_id: int, snapshot: Checkpoint) -> None:
     One transaction: a board half restored is worse than one not restored at
     all, and this runs while five other people are looking at it.
     """
-    with db.transaction() as conn:
-        conn.execute("DELETE FROM tokens WHERE scene_id = ?", (scene_id,))
-        conn.executemany(
-            f"INSERT INTO tokens ({', '.join(_TOKEN_COLUMNS)}) "  # noqa: S608
-            f"VALUES ({', '.join('?' * len(_TOKEN_COLUMNS))})",
-            snapshot.tokens,
-        )
+    try:
+        with db.transaction() as conn:
+            assets = {row["id"] for row in conn.execute("SELECT id FROM assets")}
 
-        conn.execute("DELETE FROM aoe_templates WHERE scene_id = ?", (scene_id,))
-        conn.executemany(
-            f"INSERT INTO aoe_templates ({', '.join(_TEMPLATE_COLUMNS)}) "  # noqa: S608
-            f"VALUES ({', '.join('?' * len(_TEMPLATE_COLUMNS))})",
-            snapshot.templates,
-        )
-
-        if snapshot.fog is not None:
-            cols, rows, rle = snapshot.fog
-            # The version keeps climbing even as the mask goes backwards: it is
-            # a cache key for the composited image, and reusing a number would
-            # serve every player the fog they had a moment ago.
-            conn.execute(
-                """UPDATE fog SET cols = ?, rows = ?, revealed_rle = ?,
-                                  version = version + 1, updated_at = datetime('now')
-                   WHERE scene_id = ?""",
-                (cols, rows, rle, scene_id),
+            conn.execute("DELETE FROM tokens WHERE scene_id = ?", (scene_id,))
+            conn.executemany(
+                f"INSERT INTO tokens ({', '.join(_TOKEN_COLUMNS)}) "  # noqa: S608
+                f"VALUES ({', '.join('?' * len(_TOKEN_COLUMNS))})",
+                _without_missing(
+                    snapshot.tokens, _TOKEN_COLUMNS.index("asset_id"), assets
+                ),
             )
+
+            conn.execute("DELETE FROM aoe_templates WHERE scene_id = ?", (scene_id,))
+            conn.executemany(
+                f"INSERT INTO aoe_templates ({', '.join(_TEMPLATE_COLUMNS)}) "  # noqa: S608
+                f"VALUES ({', '.join('?' * len(_TEMPLATE_COLUMNS))})",
+                snapshot.templates,
+            )
+
+            # After the tokens, and checked against the ones that actually came
+            # back: an entry is tied to its token by foreign key.
+            restored = {row[0] for row in snapshot.tokens}
+            conn.execute("DELETE FROM initiative WHERE scene_id = ?", (scene_id,))
+            conn.executemany(
+                f"INSERT INTO initiative ({', '.join(_INITIATIVE_COLUMNS)}) "  # noqa: S608
+                f"VALUES ({', '.join('?' * len(_INITIATIVE_COLUMNS))})",
+                _without_missing(
+                    snapshot.initiative,
+                    _INITIATIVE_COLUMNS.index("token_id"),
+                    restored,
+                ),
+            )
+
+            if snapshot.fog is not None:
+                cols, rows, rle = snapshot.fog
+                # The version keeps climbing even as the mask goes backwards: it
+                # is a cache key for the composited image, and reusing a number
+                # would serve every player the fog they had a moment ago.
+                conn.execute(
+                    """UPDATE fog SET cols = ?, rows = ?, revealed_rle = ?,
+                                      version = version + 1, updated_at = datetime('now')
+                       WHERE scene_id = ?""",
+                    (cols, rows, rle, scene_id),
+                )
+            else:
+                # There was no mask when this checkpoint was taken, which is how
+                # a scene nobody has brushed yet looks. Removing the row puts
+                # that back -- fog.get rebuilds it fully concealed, which is
+                # exactly the state before the stroke being undone. Leaving it
+                # alone, as this did, meant the *first* brush stroke on a scene
+                # could never be taken back.
+                conn.execute("DELETE FROM fog WHERE scene_id = ?", (scene_id,))
+    except sqlite3.IntegrityError as exc:
+        # The scene itself has gone, most likely. Answer the GM rather than
+        # letting a database error travel up and close their socket.
+        log.warning("Could not restore scene %s: %s", scene_id, exc)
+        raise ValueError("That edit cannot be undone any more.") from exc
 
 
 # --------------------------------------------------------------------------- #
