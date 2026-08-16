@@ -83,6 +83,8 @@ const ui = {
   templateDelete: el("template-delete"),
   templateHide: el("template-hide"),
   handoutList: el("handout-list"),
+  undo: el("undo"),
+  redo: el("redo"),
   handoutFile: el("handout-file"),
 };
 
@@ -345,6 +347,26 @@ async function deleteScene(scene) {
 
 el("scene-new").addEventListener("click", newScene);
 
+// ------------------------------------------------------------ undo/redo --
+
+/* The buttons follow the server's history rather than a guess made here: the
+ * hub is where the checkpoints live, and a button that lies about whether
+ * there is anything to undo is worse than no button. */
+function syncUndo(depth) {
+  ui.undo.disabled = !depth || depth.undo === 0;
+  ui.redo.disabled = !depth || depth.redo === 0;
+  ui.undo.title = depth?.next_undo ? `Undo ${depth.next_undo} (Ctrl+Z)` : "Undo (Ctrl+Z)";
+  ui.redo.title = depth?.next_redo ? `Redo ${depth.next_redo} (Ctrl+Y)` : "Redo (Ctrl+Y)";
+}
+
+ui.undo.addEventListener("click", () => socket.send("undo"));
+ui.redo.addEventListener("click", () => socket.send("redo"));
+
+socket.addEventListener("undo", (e) => {
+  syncUndo(e.detail);
+  if (e.detail.note) toast(e.detail.note);
+});
+
 // -------------------------------------------------------------- handouts --
 
 let handoutLibrary = [];
@@ -572,7 +594,23 @@ el("clear-table").addEventListener("click", () => {
 });
 
 document.addEventListener("keydown", (event) => {
-  if (!activeMap || event.target.matches("input, textarea, select")) return;
+  if (event.target.matches("input, textarea, select")) return;
+
+  // Ctrl+Z and Ctrl+Y, plus Ctrl+Shift+Z for the half of the world that
+  // expects that instead. Checked before the map guard: undoing the edit that
+  // cleared the table is exactly when there is no map.
+  if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "z") {
+    event.preventDefault();
+    socket.send(event.shiftKey ? "redo" : "undo");
+    return;
+  }
+  if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "y") {
+    event.preventDefault();
+    socket.send("redo");
+    return;
+  }
+
+  if (!activeMap) return;
 
   const selected = board.selected;
   const template = board.selectedTemplate;

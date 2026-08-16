@@ -398,6 +398,22 @@ class Hub:
             for c in targets
         ])
 
+    async def after_undo(self, scene_id: int, note: str) -> None:
+        """Push everything an undo could have touched.
+
+        A checkpoint restores tokens, templates, and fog together, so this
+        sends the whole table rather than trying to work out which of the three
+        actually moved. Undo is not a hot path -- it happens when a GM makes a
+        mistake, not sixty times a second.
+        """
+        from . import fog, undo
+
+        await self.broadcast_state()
+        await self.broadcast_templates(scene_id)
+        await self.broadcast_fog(fog.get(scene_id))
+        await self.broadcast({"type": "undo", "note": note, **undo.depth(scene_id)},
+                             gm_only=True)
+
     async def broadcast_handout(self) -> None:
         """Tell every screen what the table is looking at, or that it is nothing.
 
@@ -549,13 +565,22 @@ def _require_scene() -> int:
     return scene["id"]
 
 
+def _checkpoint(label: str) -> int:
+    """Remember how the scene looks before an edit, and return the scene."""
+    from . import undo
+
+    scene_id = _require_scene()
+    undo.checkpoint(scene_id, label)
+    return scene_id
+
+
 async def _place_token(hub: Hub, connection: Connection, payload: dict[str, Any]) -> None:
     asset_id = payload.get("asset_id")
     if not isinstance(asset_id, int):
         raise ValueError("asset_id is required.")
 
     token = state.place_token(
-        _require_scene(),
+        _checkpoint("place a token"),
         asset_id,
         float(payload.get("x", 0)),
         float(payload.get("y", 0)),
@@ -578,6 +603,13 @@ async def _update_token(hub: Hub, connection: Connection, payload: dict[str, Any
     before = state.get_token(token_id)
     if before is None:
         raise ValueError("That token no longer exists.")
+
+    from . import undo
+
+    # Labelled by what changed, so dragging coalesces into one checkpoint while
+    # a drag followed by a rename stays two.
+    undo.checkpoint(before["scene_id"], f"move a token:{token_id}"
+                    if {"x", "y"} & payload.keys() else "change a token")
 
     changes = {k: v for k, v in payload.items() if k != "token_id"}
     token = state.update_token(token_id, **changes)
@@ -606,6 +638,10 @@ async def _delete_token(hub: Hub, connection: Connection, payload: dict[str, Any
         raise ValueError("token_id is required.")
 
     before = state.get_token(token_id)
+    if before is not None:
+        from . import undo
+
+        undo.checkpoint(before["scene_id"], "delete a token")
     if not state.delete_token(token_id):
         raise ValueError("That token no longer exists.")
 
@@ -618,7 +654,7 @@ async def _delete_token(hub: Hub, connection: Connection, payload: dict[str, Any
 
 
 async def _clear_tokens(hub: Hub, connection: Connection, payload: dict[str, Any]) -> None:
-    state.clear_tokens(_require_scene())
+    state.clear_tokens(_checkpoint("clear the tokens"))
     await hub.broadcast_state()
 
 
@@ -631,7 +667,7 @@ async def _fog_paint(hub: Hub, connection: Connection, payload: dict[str, Any]) 
     from . import fog
 
     state_after = fog.paint(
-        _require_scene(),
+        _checkpoint("brush the fog"),
         float(payload.get("x", 0)),
         float(payload.get("y", 0)),
         float(payload.get("radius", 2)),
@@ -644,7 +680,7 @@ async def _fog_rect(hub: Hub, connection: Connection, payload: dict[str, Any]) -
     from . import fog
 
     state_after = fog.paint_rect(
-        _require_scene(),
+        _checkpoint("brush the fog"),
         float(payload.get("x0", 0)), float(payload.get("y0", 0)),
         float(payload.get("x1", 0)), float(payload.get("y1", 0)),
         bool(payload.get("revealed", True)),
@@ -655,7 +691,8 @@ async def _fog_rect(hub: Hub, connection: Connection, payload: dict[str, Any]) -
 async def _fog_all(hub: Hub, connection: Connection, payload: dict[str, Any]) -> None:
     from . import fog
 
-    state_after = fog.set_all(_require_scene(), bool(payload.get("revealed", True)))
+    state_after = fog.set_all(_checkpoint("reveal or hide everything"),
+                              bool(payload.get("revealed", True)))
     await hub.broadcast_fog(state_after)
 
 
@@ -672,7 +709,7 @@ async def _template_place(hub: Hub, connection: Connection, payload: dict[str, A
     """
     from . import aoe
 
-    scene_id = _require_scene()
+    scene_id = _checkpoint("drop a template")
     aoe.place(
         scene_id,
         str(payload.get("kind", "circle")),
@@ -712,7 +749,13 @@ async def _template_remove(hub: Hub, connection: Connection, payload: dict[str, 
         raise ValueError("template_id is required.")
 
     scene_id = aoe.scene_of(template_id)
-    if scene_id is None or not aoe.remove(template_id):
+    if scene_id is None:
+        raise ValueError("That template is no longer on the table.")
+
+    from . import undo
+
+    undo.checkpoint(scene_id, "remove a template")
+    if not aoe.remove(template_id):
         raise ValueError("That template is no longer on the table.")
 
     await hub.broadcast_templates(scene_id)
@@ -721,9 +764,35 @@ async def _template_remove(hub: Hub, connection: Connection, payload: dict[str, 
 async def _templates_clear(hub: Hub, connection: Connection, payload: dict[str, Any]) -> None:
     from . import aoe
 
-    scene_id = _require_scene()
+    scene_id = _checkpoint("clear the templates")
     aoe.clear(scene_id)
     await hub.broadcast_templates(scene_id)
+
+
+# --------------------------------------------------------------------------- #
+# Undo and redo
+# --------------------------------------------------------------------------- #
+
+async def _undo(hub: Hub, connection: Connection, payload: dict[str, Any]) -> None:
+    from . import undo
+
+    scene_id = _require_scene()
+    label = undo.undo(scene_id)
+    if label is None:
+        return await hub.send(connection, _error("Nothing to undo."))
+
+    await hub.after_undo(scene_id, f"Undid: {label}")
+
+
+async def _redo(hub: Hub, connection: Connection, payload: dict[str, Any]) -> None:
+    from . import undo
+
+    scene_id = _require_scene()
+    label = undo.redo(scene_id)
+    if label is None:
+        return await hub.send(connection, _error("Nothing to redo."))
+
+    await hub.after_undo(scene_id, f"Redid: {label}")
 
 
 # --------------------------------------------------------------------------- #
@@ -969,6 +1038,8 @@ _GM_INTENTS = {
     "template.update": _template_update,
     "template.remove": _template_remove,
     "templates.clear": _templates_clear,
+    "undo": _undo,
+    "redo": _redo,
     "handout.show": _handout_show,
     "handout.hide": _handout_hide,
     "initiative.add": _initiative_add,

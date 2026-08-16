@@ -161,7 +161,7 @@ Scaffolding, licensing, and the skeleton everything else hangs off.
 
 ---
 
-## Phase 8 — Quality of life `[~]`
+## Phase 8 — Quality of life `[x]`
 
 - [x] Scenes — prep several encounters, switch with one click
       (several per map, rename, copy layout *and* fog, delete; clicking a map
@@ -174,7 +174,8 @@ Scaffolding, licensing, and the skeleton everything else hangs off.
       never delivered onto ground a player has not revealed
 - [x] **Grid auto-detect** from the map image — automatic on upload, silent
       when the map has no grid drawn on it
-- [ ] Undo/redo for GM board edits
+- [x] Undo/redo for GM board edits — scene snapshots, coalesced per drag,
+      Ctrl+Z and Ctrl+Y (ADR-020)
 - [x] Token HP bars and condition markers — players get a bar in quarters and
       never the numbers, unless the token is theirs (ADR-017)
 - [x] Handout push — a library, one held up at a time, on every screen at once

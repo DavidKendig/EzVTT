@@ -701,3 +701,45 @@ database from an older EzVTT does. The write-ahead log of the replaced database
 is removed rather than left to apply a stranger's transactions to the arriving
 one — a subtlety that cost nothing to handle and would have been very confusing
 to diagnose.
+
+---
+
+## ADR-020 — Undo is a snapshot of the scene, not an inverse of the edit
+
+**Date:** 2026-08-16 · **Status:** Accepted
+
+**Decision.** Before each undoable edit the hub captures the scene's tokens,
+templates, and fog mask, and pushes that onto a per-scene stack held in memory.
+Undo restores a snapshot wholesale; redo restores the one taken on the way past.
+Repeats of the same edit within 1.2 seconds collapse into the first.
+
+**Why snapshots rather than inverse operations.** An inverse is smaller and, for
+a move, obvious. For everything else it is a trap: "undo a delete" has to put
+the row back with its id, its z, its owner, its label, its hit points, its
+conditions, its hidden and locked flags — and an inverse that forgets one of
+those fails *silently*, weeks later, in front of a table, in a way no test
+written at the time would have caught. A snapshot cannot half-apply and cannot
+forget a column that was added later. A scene's worth of tokens is a few tens of
+kilobytes; forty of them cost less than one fog composite already on disk.
+
+**Why in memory and per scene.** Undo history belongs to the session, not the
+campaign. A GM who closes EzVTT and reopens it expects the table exactly as they
+left it, not an hour of edits still waiting to be taken back. Per scene, because
+undoing on the tavern should not reach into the encounter in the cellar.
+
+**Why coalescing is by label.** Dragging a token emits an update per animation
+frame, and a stack of sixty checkpoints would make undo move it one pixel. The
+label carries the token id, so a drag is one step, a drag of a *different* token
+is a second, and a drag followed by a rename stays two.
+
+**The one thing that moves forward through an undo** is the fog version. It is a
+cache key for the composited image players are served, so it keeps climbing even
+as the mask goes backwards — reusing a number would hand every player the fog
+they had a moment ago.
+
+**Consequences.** An undo is broadcast as a whole table update rather than a
+delta: a checkpoint restores three things at once, and working out which of them
+actually moved would be effort spent on a path that runs when a GM makes a
+mistake, not sixty times a second. Undo is GM-only and its bookkeeping is sent
+to GMs alone; players simply see the board change, which is what they would see
+if the GM had put it back by hand.
