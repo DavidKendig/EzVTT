@@ -950,6 +950,39 @@ async def _initiative_jump(hub: Hub, connection: Connection, payload: dict[str, 
 # Chat intents  (any signed-in person)
 # --------------------------------------------------------------------------- #
 
+async def _move_token(hub: Hub, connection: Connection, payload: dict[str, Any]) -> None:
+    """Move a token you own. Position only.
+
+    Deliberately not `token.update` with a permission check bolted on: that
+    intent sets labels, layers, hit points, hidden and locked, and a player
+    reaching any of those would be a much larger hole than the one this opens.
+    There is nowhere in this payload to put anything but a position.
+    """
+    token_id = payload.get("token_id")
+    if not isinstance(token_id, int):
+        raise ValueError("token_id is required.")
+
+    token = state.get_token(token_id)
+    scene = state.active_scene()
+    on_the_table = scene is not None and token is not None and token["scene_id"] == scene["id"]
+
+    if not on_the_table or not state.may_move(
+        token, connection.principal.user_id, connection.is_gm
+    ):
+        # One sentence for every refusal: which one applied is itself
+        # information about the board. See state.may_move.
+        raise ValueError("That token is not yours to move.")
+
+    from . import undo
+
+    undo.checkpoint(token["scene_id"], f"move a token:{token_id}")
+
+    moved = state.update_token(
+        token_id, x=float(payload.get("x", token["x"])), y=float(payload.get("y", token["y"]))
+    )
+    await hub.broadcast_token(moved, "token.changed")
+
+
 async def _chat_say(hub: Hub, connection: Connection, payload: dict[str, Any]) -> None:
     from . import chat
 
@@ -1034,6 +1067,7 @@ _TABLE_INTENTS = {
     # Naming this one the same would have made every heartbeat a marker on
     # everybody's map.
     "board.ping": _ping,
+    "token.move": _move_token,
     "chat.say": _chat_say,
     "chat.roll": _chat_roll,
     "chat.whisper": _chat_whisper,

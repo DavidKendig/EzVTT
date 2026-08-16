@@ -17,7 +17,7 @@ Windows, macOS, and Linux; Phase 8 has since been finished in full.
 |---|---|
 | Branch | `main` — [PR #1](https://github.com/DavidKendig/EzVTT/pull/1) merged 2026-08-16 |
 | `main` | **is** the rewrite now; the Java/Django prototype is history behind it |
-| Tests | **698**, all passing on Windows, macOS, and Linux |
+| Tests | **711**, all passing on Windows, macOS, and Linux |
 | Lint | `ruff check .` clean |
 | CI | green on 3 platforms, Python 3.10 and 3.12 |
 | Release | **[v0.1.1](https://github.com/DavidKendig/EzVTT/releases/tag/v0.1.1)** — published; three archives + SHA256SUMS |
@@ -56,6 +56,49 @@ would also be worth cutting: everything since v0.1.1 is unreleased.
 2. `scripts/stop.ps1` sends a console control event from a child process rather
    than calling `taskkill`. Windows has no SIGTERM for console apps, and doing
    the console dance inline breaks the calling shell.
+
+---
+
+## Session 20 — 2026-08-16 · **players move their own tokens**
+
+`tokens.owner_user_id` has been in the schema since 001, described as "set to
+let a player move this token" — and nothing ever read it for that. It does now.
+
+### How
+
+**`token.move`**, a new intent any signed-in person may send, carrying a token
+id and a position and nothing else. `token.update` stays GM-only. Adding a
+permission check to *that* would have handed players a path to labels, layers,
+hit points, owners, hidden and locked, guarded by a field filter someone has to
+keep correct forever. There is nowhere in a `token.move` payload to put anything
+else.
+
+The rule is one function, `state.may_move`: the GM moves anything; anyone else
+moves what is theirs, while it is unlocked, unhidden, and on the scene on the
+table. **Every refusal is the same sentence**, because saying *which* rule
+stopped them tells a player what is there.
+
+The GM's token panel gained a **Belongs to** control, since there was no way to
+set an owner before. Ownership now decides two things: who may drag a token, and
+who sees its hit points as numbers rather than a bar (ADR-017).
+
+### Verified, not just written
+
+- Anya moved her own token; **Brand moving Anya's was refused** and the token
+  did not move
+- Unowned, locked, and hidden all refused with the *same* message
+- `token.update` from a player: still *"Only the GM can do that."*
+- A move carrying `hidden`, `hp`, `label`, `locked` and `layer` alongside the
+  position moved the token and **discarded all five**
+- The GM's Ctrl+Z took a player's move back
+- The board's own rule, exercised directly: mine ✓, someone else's ✗, nobody's
+  ✗, mine-but-locked ✗, mine-but-hidden ✗
+
+**One thing that check found:** the client offered a drag on a hidden token the
+server would refuse. Not a hole — the server is authoritative — but the token
+would have snapped back as if EzVTT were broken. The two rules now agree.
+
+**711 tests, ruff clean** — 13 added in `tests/test_ownership.py`.
 
 ---
 

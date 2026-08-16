@@ -743,3 +743,44 @@ actually moved would be effort spent on a path that runs when a GM makes a
 mistake, not sixty times a second. Undo is GM-only and its bookkeeping is sent
 to GMs alone; players simply see the board change, which is what they would see
 if the GM had put it back by hand.
+
+---
+
+## ADR-021 — A player moves their own token, through an intent that can only move
+
+**Date:** 2026-08-16 · **Status:** Accepted
+
+**Decision.** `token.move` carries a token id and a position, nothing else, and
+any signed-in person may send it. The server allows it when the sender is the
+GM, or owns that token and it is unlocked, unhidden, and on the scene currently
+on the table. `token.update` stays GM-only.
+
+**Why a second intent rather than a permission check on the first.**
+`token.update` sets labels, layers, hit points, owners, hidden and locked. A
+player reaching any of those would be a far larger hole than the one being
+opened, and "check the fields before applying them" is a filter someone has to
+maintain correctly forever. There is nowhere in a `token.move` payload to put
+anything but a position — the handler reads `x` and `y` and ignores the rest,
+which was tested by sending it `hidden`, `hp`, `label`, `locked` and `layer`
+alongside a move and watching all five be discarded.
+
+**Why locked and hidden are refused.** Locked is how a GM pins the furniture
+down; a player dragging the tavern's bar across the room is the thing it exists
+to stop. Hidden is refused for the same reason a hidden token is absent from a
+player's payload: a token they cannot see must not be one they can feel for.
+
+**Every refusal is the same sentence.** "That token is not yours to move" covers
+someone else's, nobody's, locked, hidden, and not-on-this-scene alike. Telling a
+player *which* rule stopped them is telling them what is there — a distinct
+message for a hidden token locates the ambush by elimination.
+
+**Consequences.** The rule lives in `state.may_move`, one function the hub calls
+and the tests exercise, rather than spread through the handler. The client has
+the same rule in `Board#canMove` so it does not offer a drag the server will
+refuse — a disagreement there does not open a hole, since the server is
+authoritative, but it makes the token snap back as if EzVTT were broken; the two
+were reconciled after a check found them differing on hidden tokens. A player's
+move takes an undo checkpoint like any other edit, so the GM can put back a
+token that was dragged somewhere it should not have gone. Ownership now decides
+two things: who may move a token, and who sees its hit points as numbers
+(ADR-017).

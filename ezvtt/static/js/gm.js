@@ -65,6 +65,7 @@ const ui = {
   tokenRot: el("token-rot"),
   tokenLabel: el("token-label"),
   tokenLayer: el("token-layer"),
+  tokenOwner: el("token-owner"),
   tokenHidden: el("token-hidden"),
   tokenLocked: el("token-locked"),
   tokenDelete: el("token-delete"),
@@ -144,6 +145,7 @@ function applyState(state) {
     ui.mapMeta.textContent = "";
   }
 
+  if (state.people) renderOwners(state.people);
   if (state.library) renderLibrary(state.library, activeMap?.id);
   if (state.scenes) renderScenes(state.scenes);
   if (state.initiative) initiativePanel.apply(state.initiative);
@@ -737,6 +739,7 @@ function syncTokenPanel() {
   ui.tokenRot.value = token.rotation;
   ui.tokenLabel.value = token.label || "";
   ui.tokenLayer.value = token.layer;
+  ui.tokenOwner.value = token.owner_user_id ?? "";
   ui.tokenHidden.checked = token.hidden;
   ui.tokenLocked.checked = token.locked;
 
@@ -748,6 +751,27 @@ function syncTokenPanel() {
 
 /* Toggle chips rather than a multi-select: a GM marking three goblins prone
  * mid-turn should not be opening a dropdown. */
+/* Rebuilt from the account list the snapshot carries, so a player added
+ * mid-session appears without a reload. */
+function renderOwners(people) {
+  const chosen = ui.tokenOwner.value;
+  ui.tokenOwner.replaceChildren();
+
+  const nobody = document.createElement("option");
+  nobody.value = "";
+  nobody.textContent = "Nobody — only you can move it";
+  ui.tokenOwner.append(nobody);
+
+  for (const person of people) {
+    const option = document.createElement("option");
+    option.value = String(person.id);
+    // textContent: display names are typed by an administrator.
+    option.textContent = person.display_name;
+    ui.tokenOwner.append(option);
+  }
+  ui.tokenOwner.value = chosen;
+}
+
 function renderConditions(token) {
   const active = new Set(token.conditions || []);
   ui.tokenConditions.replaceChildren();
@@ -835,6 +859,9 @@ for (const [input, key] of [[ui.tokenW, "grid_w"], [ui.tokenH, "grid_h"], [ui.to
 }
 ui.tokenLabel.addEventListener("change", () => updateSelected({ label: ui.tokenLabel.value }));
 ui.tokenLayer.addEventListener("change", () => updateSelected({ layer: ui.tokenLayer.value }));
+ui.tokenOwner.addEventListener("change", () => updateSelected({
+  owner_user_id: ui.tokenOwner.value === "" ? null : Number(ui.tokenOwner.value),
+}));
 ui.tokenHidden.addEventListener("change", () => updateSelected({ hidden: ui.tokenHidden.checked }));
 ui.tokenLocked.addEventListener("change", () => updateSelected({ locked: ui.tokenLocked.checked }));
 

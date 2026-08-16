@@ -506,6 +506,32 @@ def list_tokens(
     return [token_to_dict(row, for_gm, viewer_id) for row in rows]
 
 
+def may_move(token: dict[str, Any], viewer_id: int | None, is_gm: bool) -> bool:
+    """Whether this person may drag this token.
+
+    The GM may move anything. Anyone else may move exactly what is theirs, and
+    only while it is on the table in front of them:
+
+    * **locked** is a lock. It is how a GM pins the furniture down, and a player
+      dragging the tavern's bar across the room is the thing it exists to stop.
+    * **hidden** is refused for the same reason it is omitted from their
+      payload -- a token they cannot see is one they must not be able to feel
+      for. See ADR-004.
+    * **unowned** is nobody's, which is not the same as everybody's.
+
+    A refusal never says *which* of these applied. "That token is not yours" for
+    a hidden token and for someone else's is the same sentence on purpose: the
+    alternative tells a player where the ambush is by process of elimination.
+    """
+    if is_gm:
+        return True
+    if viewer_id is None:
+        return False
+    if token["owner_user_id"] != viewer_id:
+        return False
+    return not token["hidden"] and not token["locked"]
+
+
 def get_token(
     token_id: int, for_gm: bool = True, viewer_id: int | None = None
 ) -> dict[str, Any] | None:
@@ -601,6 +627,21 @@ def update_token(token_id: int, **changes: Any) -> dict[str, Any] | None:
     if "label" in changes:
         label = changes["label"]
         fields["label"] = str(label).strip()[:80] if label else None
+
+    if "owner_user_id" in changes:
+        owner = changes["owner_user_id"]
+        if owner in (None, "", 0):
+            fields["owner_user_id"] = None
+        else:
+            owner = int(owner)
+            # Checked rather than trusted: a token owned by an id that is not an
+            # account is a token nobody can move and the GM cannot see why.
+            exists = db.connect().execute(
+                "SELECT 1 FROM users WHERE id = ? AND is_active = 1", (owner,)
+            ).fetchone()
+            if exists is None:
+                raise ValueError("There is no such person to give that token to.")
+            fields["owner_user_id"] = owner
 
     if "hidden" in changes:
         fields["is_hidden"] = 1 if changes["hidden"] else 0
@@ -724,6 +765,16 @@ def snapshot(for_gm: bool, viewer_id: int | None = None) -> dict[str, Any]:
         # for them and no business seeing what is not on the table.
         state["library"] = list_maps()
         state["scenes"] = list_scenes()
+        # Who a token can be given to. GM-only: it is the account list. Every
+        # active account, not only the players -- a GM running a character of
+        # their own should be able to hand it to themselves.
+        state["people"] = [
+            dict(row) for row in db.connect().execute(
+                """SELECT id, display_name, role FROM users
+                   WHERE is_active = 1
+                   ORDER BY display_name COLLATE NOCASE"""
+            )
+        ]
         return state
 
     if active_map is not None and fog_state is None:

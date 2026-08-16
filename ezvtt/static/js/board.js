@@ -120,6 +120,9 @@ export class Board {
 
   #editable = false;
   #snap = true;
+  // Who is looking. A player may drag the token they own and nothing else, so
+  // the board has to know which of them is theirs. See ADR-021.
+  #viewerId = null;
 
   // Fog is a mask of revealed cells plus how solidly to paint the rest.
   //   GM screen      0.55 -- see through what you are concealing
@@ -156,11 +159,14 @@ export class Board {
   // ask what happened to it.
   #pings = [];
 
-  constructor(canvas, { interactive = true, editable = false, fogOpacity = 0.55 } = {}) {
+  constructor(canvas, {
+    interactive = true, editable = false, fogOpacity = 0.55, viewerId = null,
+  } = {}) {
     this.#canvas = canvas;
     this.#ctx = canvas.getContext("2d", { alpha: false });
     this.#editable = editable;
     this.#fogOpacity = fogOpacity;
+    this.#viewerId = viewerId;
 
     this.#observeSize();
     if (interactive) this.#bindPointer();
@@ -481,6 +487,22 @@ export class Board {
       if (pointInPolygon(gridX, gridY, this.#outline(template))) return template;
     }
     return null;
+  }
+
+  /** Whether the person at this screen may drag that token.
+
+   * The server decides this too, and its answer is the one that counts; this
+   * is so the cursor does not offer a drag that will be refused. */
+  canMove(token) {
+    if (!token || token.locked) return false;
+    if (this.#editable) return true;
+    // Hidden is refused for a player here as well as on the server. A player is
+    // never sent a hidden token, so this cannot come up from a real payload --
+    // but the two rules disagreeing means the board offers a drag the server
+    // will refuse, and the token snaps back as if EzVTT were broken.
+    return this.#viewerId !== null
+      && token.owner_user_id === this.#viewerId
+      && !token.hidden;
   }
 
   /** Topmost token containing a point in grid units, or null. */
@@ -1074,7 +1096,9 @@ export class Board {
       // Measured by anyone, including a player: the ruler changes nothing, so
       // it does not need the rights that moving something does.
       const anyGrid = this.toGrid(point.x, point.y);
-      const grid = this.#editable ? anyGrid : null;
+      // Everyone gets grid coordinates now: a player needs them to drag their
+      // own token, and the ruler and ping have always needed them.
+      const grid = anyGrid;
 
       // Alt-click points at a spot; alt-*drag* still moves a token off the
       // grid, as it always has. Which one it was is only knowable on release,
@@ -1118,8 +1142,11 @@ export class Board {
         return;
       }
 
-      const template = grid ? this.templateAt(grid.x, grid.y) : null;
-      const hit = grid ? this.tokenAt(grid.x, grid.y) : null;
+      const template = grid && this.#editable ? this.templateAt(grid.x, grid.y) : null;
+      const candidate = grid ? this.tokenAt(grid.x, grid.y) : null;
+      // Someone else's token is scenery: the drag falls through to a pan, which
+      // is what a player expects from dragging the map.
+      const hit = this.canMove(candidate) ? candidate : null;
 
       // A token wins a contested click: the template under it is scenery for
       // the moment, and the creature is what the GM reached for.

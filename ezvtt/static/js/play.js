@@ -12,11 +12,19 @@ import { InitiativePanel } from "./initiative.js";
 import { HandoutOverlay } from "./handouts.js";
 import { TableSocket } from "./ws.js";
 
-const board = new Board(document.getElementById("board-canvas"));
+const me = Number(document.body.dataset.userId) || null;
+const board = new Board(document.getElementById("board-canvas"), { viewerId: me });
 const socket = new TableSocket("play");
 const chatPanel = new ChatPanel(document.getElementById("chat-panel"), socket);
-const codex = new Codex(document.getElementById("codex-panel"), {
-  me: Number(document.body.dataset.userId) || null,
+const codex = new Codex(document.getElementById("codex-panel"), { me });
+
+/* A player may drag the token that is theirs, and only that one. The server
+ * checks again and is the answer that counts; the board only decides whether
+ * to offer the drag. See ADR-021. */
+board.element.addEventListener("board:tokenmove", (event) => {
+  socket.send("token.move", {
+    token_id: event.detail.id, x: event.detail.x, y: event.detail.y,
+  });
 });
 const initiativePanel = new InitiativePanel(
   document.getElementById("initiative-panel"), socket,
