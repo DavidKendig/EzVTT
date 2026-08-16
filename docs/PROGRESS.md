@@ -10,16 +10,18 @@ without reading the codebase.
 
 ## Start here
 
-**State at 2026-08-16.** Phases 0–8 done bar polish. **Phase 9 packaging is
-built and runs**: a single-file EzVTT that needs no Python.
+**State at 2026-08-16.** Phases 0–9 done. **v0.1.0 is built for Windows,
+macOS, and Linux** and waiting as a draft release for a human to publish.
 
 | | |
 |---|---|
 | Branch | `rewrite/fastapi-vtt`, everything committed and pushed |
 | PR | [#1](https://github.com/DavidKendig/EzVTT/pull/1) — open, not merged |
 | `main` | still the original Java/Django prototype; the PR replaces it |
-| Tests | **612**, all passing |
+| Tests | **613**, all passing on Windows, macOS, and Linux |
 | Lint | `ruff check .` clean |
+| CI | green on 3 platforms, Python 3.10 and 3.12 |
+| Release | [v0.1.0](https://github.com/DavidKendig/EzVTT/releases) — **draft**, three archives + SHA256SUMS |
 
 ```bash
 .\scripts\setup.ps1                       # once
@@ -37,10 +39,9 @@ one click · an initiative tracker on all three screens · a ruler, and
 fireballs the table can see · Alt-click to point at something · **a grid that
 lines itself up on upload.**
 
-**Next:** push to GitHub and cut a real release — the workflows have never
-run, and macOS and Linux builds have never been produced. After that, Phase 8's
-remainder (HP bars, undo/redo, handout push, campaign export) or Phase 10 (SRD).
-See the bottom of this file.
+**Next:** publish the draft release, then Phase 8's remainder (HP bars,
+undo/redo, handout push, campaign export) or Phase 10 (SRD). PR #1 is still
+open: `main` remains the old prototype. See the bottom of this file.
 
 ```bash
 .\scripts\build.ps1                        # a single-file EzVTT + checksum
@@ -55,6 +56,43 @@ See the bottom of this file.
 2. `scripts/stop.ps1` sends a console control event from a child process rather
    than calling `taskkill`. Windows has no SIGTERM for console apps, and doing
    the console dance inline breaks the calling shell.
+
+---
+
+## Session 15 — 2026-08-16 · **v0.1.0 is built**
+
+Pushed six commits, tagged **v0.1.0**, and the release workflow built EzVTT on
+three runners in 1m26s:
+
+| | |
+|---|---|
+| `ezvtt-0.1.0-windows-x64.zip` | 24.7 MB |
+| `ezvtt-0.1.0-macos-arm64.tar.gz` | 21.0 MB |
+| `ezvtt-0.1.0-linux-x64.tar.gz` | 38.6 MB |
+| `SHA256SUMS.txt` | all three |
+
+Every one was smoke-tested on its own platform before packaging. The release is
+a **draft** on purpose — the workflow does not publish anything without a human
+reading the notes first.
+
+### CI found a real bug on its first run
+
+`test_resolve_within_refuses_escapes["..\..\evil"]` failed on Linux and
+macOS. On POSIX a backslash is not a path separator, so that string is an
+ordinary filename that lands inside the root — `resolve_within` was right to
+allow it, and the *test* was asserting a Windows-shaped answer everywhere. It
+now asserts the property that holds on every platform (the result cannot leave
+the root) and keeps demanding a refusal where a backslash really does separate.
+
+The suite had never run off Windows before. That is precisely what the matrix
+is for, and it earned its keep in the first ninety seconds.
+
+### The tag is one commit behind green
+
+v0.1.0 points at the commit *before* that fix, so its CI run is red for a
+test-only reason. The binaries are unaffected — they built and passed their
+smoke tests on all three platforms — but if a green tag matters, cut v0.1.1
+from `68fd23b` rather than moving a published tag.
 
 ---
 
