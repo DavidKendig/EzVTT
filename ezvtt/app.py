@@ -24,6 +24,7 @@ from .hub import MAX_MESSAGE_BYTES, hub
 from .routes import accounts as account_routes
 from .routes import admin as admin_routes
 from .routes import assets as asset_routes
+from .routes import campaign as campaign_routes
 from .routes import handouts as handout_routes
 from .routes import maps as maps_routes
 from .routes import media_files
@@ -161,6 +162,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(scene_routes.router)
     app.include_router(asset_routes.router)
     app.include_router(handout_routes.router)
+    app.include_router(campaign_routes.router)
     app.include_router(network_routes.router)
     app.include_router(wiki_routes.router)
     app.include_router(wiki_routes.notes_router)

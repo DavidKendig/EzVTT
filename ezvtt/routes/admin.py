@@ -12,7 +12,7 @@ import secrets
 from fastapi import APIRouter, Depends, Form, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 
-from .. import auth, db
+from .. import auth, campaign, db
 from ..auth import Role
 from ..deps import require_admin
 from .accounts import _check_csrf, attach_csrf_cookie, csrf_for
@@ -43,6 +43,7 @@ def _render(request: Request, **context) -> HTMLResponse:
             "bypass_username": auth.BYPASS_USERNAME,
             "campaign_name": db.get_setting("campaign_name", "A New Campaign"),
             "bypass_active": auth.is_bypass_principal(request.state.principal),
+            "pending_import": campaign.pending(),
             **context,
         },
     )

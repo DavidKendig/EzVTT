@@ -152,8 +152,21 @@ def migrate(path: Path | None = None, directory: Path | None = None) -> list[str
 
 
 def initialise(path: Path | None = None) -> list[str]:
-    """Create the data directories and bring the schema up to date."""
+    """Create the data directories and bring the schema up to date.
+
+    A campaign staged by an import is swapped in *first*, before any migration
+    runs -- an archive from an older EzVTT arrives needing exactly the same
+    upgrade a database from an older EzVTT does, and this is where that happens.
+    """
     config.ensure_directories()
+
+    if path is None:
+        from . import campaign
+
+        replaced = campaign.apply_pending()
+        if replaced is not None:
+            close()          # nothing may hold the file that was just swapped
+
     return migrate(path)
 
 

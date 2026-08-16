@@ -179,7 +179,8 @@ Scaffolding, licensing, and the skeleton everything else hangs off.
       never the numbers, unless the token is theirs (ADR-017)
 - [x] Handout push — a library, one held up at a time, on every screen at once
       (ADR-018)
-- [ ] Campaign export/import as a zip
+- [x] Campaign export/import as a zip — admin-only, sessions stripped, staged
+      import applied on the next start (ADR-019)
 
 ---
 

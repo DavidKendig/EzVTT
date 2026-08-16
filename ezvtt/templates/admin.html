@@ -153,6 +153,44 @@
     </div>
 
     <div class="card">
+      <h2 class="card__title">Campaign backup</h2>
+
+      {% if pending_import %}
+        <p class="chip chip--warn" style="margin-bottom:10px">
+          A campaign is staged and will replace this one when EzVTT next starts.
+        </p>
+        <form method="post" action="/api/campaign/import/cancel" style="margin-bottom:16px">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+          <button class="btn btn--sm btn--danger" type="submit">
+            Cancel the staged import
+          </button>
+        </form>
+      {% endif %}
+
+      <div class="row row--wrap" style="margin-bottom:16px">
+        <a class="btn btn--sm btn--primary" href="/api/campaign/export">
+          Export this campaign
+        </a>
+        <span class="muted">
+          One zip: the database, the maps, the uploads, and the handouts.
+          Not the Cartos bundle, and not anyone's login session.
+        </span>
+      </div>
+
+      <form method="post" action="/api/campaign/import" enctype="multipart/form-data"
+            class="row row--wrap"
+            onsubmit="return confirm('Importing replaces this entire campaign when EzVTT next starts. The current database is kept beside the new one. Continue?')">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <input class="input" type="file" name="file" accept=".zip,application/zip" required>
+        <button class="btn btn--sm btn--danger" type="submit">Import a campaign</button>
+        <span class="muted">
+          Staged now, applied at the next start &mdash; a database cannot be
+          swapped underneath a running server.
+        </span>
+      </form>
+    </div>
+
+    <div class="card">
       <h2 class="card__title">Settings</h2>
 
       <form method="post" action="/admin/settings/campaign" class="row" style="margin-bottom:16px">

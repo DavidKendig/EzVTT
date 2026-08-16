@@ -653,3 +653,51 @@ is therefore a deliberate act of publication, and the only images in it are ones
 a GM uploaded to show. Deleting the handout that is up clears the pointer, and
 `showing()` resolves through `get()` so a pointer left dangling by any other
 route answers "nothing is showing" rather than a broken image on five screens.
+
+---
+
+## ADR-019 — A campaign exports as one archive, and imports on the next start
+
+**Date:** 2026-08-16 · **Status:** Accepted
+
+**Decision.** Export writes a zip holding the database, the battlemaps, the
+uploaded art, and the handouts. Import unpacks the media immediately, **stages**
+the database, and swaps it in when EzVTT next starts, keeping the outgoing one.
+Both are admin-only.
+
+**What is left out, and why.** Thumbnails and fog composites are derived: they
+rebuild on demand and are collectively larger than what they rebuild from. The
+Cartos bundle is 537 MB under a separate licence and is installed by a script
+(ADR-003, ADR-005). **Live sessions are deleted from the exported copy**, because
+a session token is a credential — an archive carrying them is a file that logs
+its holder in as whoever was signed in when it was made. Accounts themselves
+stay: a restore that loses every login is not a restore.
+
+**Why `VACUUM INTO` rather than copying the file.** The live database has a
+write-ahead log beside it. Copying the one without the other produces an archive
+missing the last few minutes of play, which is exactly the part a GM was trying
+to keep. `VACUUM INTO` takes a coherent copy of a database that is being written
+to, which is the situation every export is made in.
+
+**Why importing waits for a restart.** There is no honest way to replace a
+SQLite file that open connections are holding, and this program keeps one per
+thread by design (ADR-002). Staging it and swapping on the next start is the
+version of this that cannot corrupt anything. The old database is kept beside
+the new one, because "that turned out to be the wrong archive" deserves a better
+answer than "restore from your own backup".
+
+**Why the archive is treated as hostile.** A zip names its own paths, and
+extracting one writes wherever it says — `../../etc/passwd` is as easy to put in
+an archive as a filename. Every member is checked against the two names the
+format allows and the three media prefixes, with backslashes normalised and
+traversal, absolute paths, drive letters, and subdirectories all refused. There
+is also a cap on the unpacked size.
+
+**Consequences.** Import is the most destructive thing in the program, so it
+carries the CSRF token the admin forms use rather than being a bare JSON
+endpoint another site could post to. `db.initialise` applies a staged import
+*before* migrating, so an archive from an older EzVTT gets exactly the upgrade a
+database from an older EzVTT does. The write-ahead log of the replaced database
+is removed rather than left to apply a stranger's transactions to the arriving
+one — a subtlety that cost nothing to handle and would have been very confusing
+to diagnose.
