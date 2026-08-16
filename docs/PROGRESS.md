@@ -10,8 +10,8 @@ without reading the codebase.
 
 ## Start here
 
-**State at 2026-08-16.** Phases 0–9 done. **v0.1.0 is built for Windows,
-macOS, and Linux** and waiting as a draft release for a human to publish.
+**State at 2026-08-16.** Phases 0–9 done. **v0.1.1 is published** for
+Windows, macOS, and Linux.
 
 | | |
 |---|---|
@@ -21,7 +21,7 @@ macOS, and Linux** and waiting as a draft release for a human to publish.
 | Tests | **613**, all passing on Windows, macOS, and Linux |
 | Lint | `ruff check .` clean |
 | CI | green on 3 platforms, Python 3.10 and 3.12 |
-| Release | [v0.1.0](https://github.com/DavidKendig/EzVTT/releases) — **draft**, three archives + SHA256SUMS |
+| Release | **[v0.1.1](https://github.com/DavidKendig/EzVTT/releases/tag/v0.1.1)** — published; three archives + SHA256SUMS |
 
 ```bash
 .\scripts\setup.ps1                       # once
@@ -39,9 +39,11 @@ one click · an initiative tracker on all three screens · a ruler, and
 fireballs the table can see · Alt-click to point at something · **a grid that
 lines itself up on upload.**
 
-**Next:** publish the draft release, then Phase 8's remainder (HP bars,
-undo/redo, handout push, campaign export) or Phase 10 (SRD). PR #1 is still
-open: `main` remains the old prototype. See the bottom of this file.
+**Next:** Phase 8's remainder (HP bars, undo/redo, handout push, campaign
+export) or Phase 10 (SRD). **PR #1 is still open — `main` remains the old
+Java/Django prototype**, so anyone landing on the repository's front page sees
+the wrong project. Merging it is the highest-value thing left. See the bottom
+of this file.
 
 ```bash
 .\scripts\build.ps1                        # a single-file EzVTT + checksum
@@ -56,6 +58,36 @@ open: `main` remains the old prototype. See the bottom of this file.
 2. `scripts/stop.ps1` sends a console control event from a child process rather
    than calling `taskkill`. Windows has no SIGTERM for console apps, and doing
    the console dance inline breaks the calling shell.
+
+---
+
+## Session 16 — 2026-08-16 · **v0.1.1 published**
+
+v0.1.0 was never published. Its tag sat one commit behind the fix CI had just
+found, so a clone of that tag failed its own test suite on Linux and macOS —
+a poor first impression for a release nobody had downloaded yet. **v0.1.1** was
+cut from the green commit instead, the v0.1.0 draft and tag were deleted, and
+0.1.1 is live:
+
+<https://github.com/DavidKendig/EzVTT/releases/tag/v0.1.1>
+
+| | |
+|---|---|
+| `ezvtt-0.1.1-windows-x64.zip` | 24.7 MB |
+| `ezvtt-0.1.1-macos-arm64.tar.gz` | 21.0 MB |
+| `ezvtt-0.1.1-linux-x64.tar.gz` | 38.6 MB |
+| `SHA256SUMS.txt` | all three |
+
+All eight CI jobs green on the tagged commit: tests on Windows, macOS, and
+Linux, Python 3.10 and 3.12, plus a packaged build smoke-tested on each.
+
+### Verified the way a GM would
+
+Downloaded `ezvtt-0.1.1-windows-x64.zip` **from the published release**, checked
+it against `SHA256SUMS.txt` (`OK`), unpacked it — `ezvtt.exe`, `LICENSE`,
+`NOTICE`, `THIRD_PARTY_LICENSES.md`, `README.md` — and ran the smoke test
+against that binary. Ten checks, all passing. What is on the release page is a
+thing that works, not a thing that built.
 
 ---
 
